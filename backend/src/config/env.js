@@ -8,6 +8,7 @@ const schema = z.object({
   JWT_EXPIRES_IN: z.string().default("7d"),
   CORS_ORIGIN: z.string().url(),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(20),
 });
 
 const result = schema.safeParse(process.env);

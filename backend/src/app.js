@@ -4,6 +4,7 @@ import cors from "cors";
 import { env } from "./config/env.js";
 import { notFound } from "./middleware/notFound.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import authRoutes  from "./routes/authRoutes.js";
 
 const app = express();
 
@@ -16,7 +17,10 @@ app.get("/api/health",(req,res)=>{
     res.json({ success: true, data: {status: "ok"}})
 });
 
+app.use("/api/auth",authRoutes);
+
 app.use(notFound);
+
 app.use(errorHandler);
 
 export default app;
