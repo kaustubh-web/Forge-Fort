@@ -1,12 +1,32 @@
-import { Button } from "@/components/ui/button";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "@/context/AuthContext";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import AppShell from "@/components/AppShell";
+import Login from "@/pages/Login";
+import Register from "@/pages/Register";
+import Dashboard from "@/pages/Dashboard";
+import { Toaster } from "@/components/ui/sonner";
 
-// Placeholder so the scaffold builds. Replace with the router + AuthProvider.
 export default function App() {
   return (
-    <div className="p-6 space-y-3">
-      <h1 className="text-xl font-medium">Forge-fort</h1>
-      <p className="text-muted-foreground">Frontend scaffold is running.</p>
-      <Button>Primary action</Button>
-    </div>
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          {/* public */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+
+          {/* protected: ProtectedRoute wraps AppShell, AppShell wraps the page */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppShell />}>
+              <Route index element={<Dashboard />} />
+            </Route>
+          </Route>
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+        <Toaster />
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
