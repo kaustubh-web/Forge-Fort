@@ -9,6 +9,8 @@ const schema = z.object({
   CORS_ORIGIN: z.string().url(),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(20),
+  MAX_NODES: z.coerce.number().int().positive().default(50),
+  MAX_EDGES: z.coerce.number().int().positive().default(100),
 });
 
 const result = schema.safeParse(process.env);
