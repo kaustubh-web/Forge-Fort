@@ -180,3 +180,6 @@ export function nextNodeId(type, existingIds) {
   while (taken.has(`${type}-${n}`)) n += 1;
   return `${type}-${n}`;
 }
+
+// The key used to carry "which node type is being dragged" from the palette to the canvas.
+export const DRAG_TYPE = "application/x-forge-node-type";
