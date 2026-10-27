@@ -78,7 +78,7 @@ Build explainability into the product itself:
 
 ## Commands
 (Keep updated as scripts are added.)
-- Backend: _TBD_
-- Frontend: _TBD_
-- Tests: _TBD_
+- Backend (from `backend/`): `npm run dev` (watch mode) or `npm start`, serves on port 4000. Needs `backend/.env` (copy `.env.example`).
+- Frontend (from `frontend/`): `npm run dev` (port 5173, strict), `npm run build`. Needs `frontend/.env`.
+- Tests (from `backend/`): `npm test` (Vitest + supertest + mongodb-memory-server; no real DB needed).
 - Seed example workflows: _TBD_
