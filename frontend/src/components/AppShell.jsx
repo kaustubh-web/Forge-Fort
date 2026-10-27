@@ -13,7 +13,7 @@ export default function AppShell() {
   const { user, logout } = useAuth();
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen">
       <aside className="w-52 shrink-0 border-r flex flex-col bg-sidebar">
         <div className="h-12 px-4 flex items-center font-medium border-b">Forge-fort</div>
 
@@ -60,7 +60,7 @@ export default function AppShell() {
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0">
+      <main className="flex-1 min-w-0 overflow-auto">
         <Outlet /> {/* the matched child route (Dashboard) renders here */}
       </main>
     </div>

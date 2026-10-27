@@ -115,3 +115,23 @@
     @apply bg-background text-foreground text-sm antialiased;
   }
 }
+
+div.react-flow.dark {
+  --xy-background-color-default: var(--background);
+  --xy-background-pattern-dots-color-default: var(--border);
+  --xy-edge-stroke-default: var(--muted-foreground);
+  --xy-edge-stroke-selected-default: var(--primary);
+  --xy-connectionline-stroke-default: var(--primary);
+  --xy-handle-background-color-default: var(--muted-foreground);
+  --xy-handle-border-color-default: var(--background);
+  --xy-controls-button-background-color-default: var(--card);
+  --xy-controls-button-background-color-hover-default: var(--accent);
+  --xy-controls-button-color-default: var(--foreground);
+  --xy-controls-button-border-color-default: var(--border);
+  --xy-minimap-background-color-default: var(--card);
+  --xy-minimap-mask-background-color-default: color-mix(in oklch, var(--background) 70%, transparent);
+  --xy-minimap-node-background-color-default: var(--muted);
+  --xy-selection-background-color-default: color-mix(in oklch, var(--primary) 8%, transparent);
+  --xy-selection-border-default: 1px dotted var(--primary);
+}
+
