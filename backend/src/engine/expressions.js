@@ -56,6 +56,19 @@ function walk(value, keys) {
     return current;
 }
 
+// Read a plain dotted field path ("body.items.0") from a value. Used by Transform params,
+// which name fields without braces. Same rules: own properties only, no prototype keys.
+export function getPath(value, path) {
+    return walk(value, splitFieldPath(path));
+}
+
+export function splitFieldPath(path) {
+    const keys = String(path).split(".").map((key) => key.trim());
+    if (keys.some((key) => key === "")) throw new NodeError(`Invalid field path "${path}"`);
+    if (keys.some((key) => BLOCKED_KEYS.has(key))) throw new NodeError(`Field path "${path}" uses a forbidden key`);
+    return keys;
+}
+
 // Sentinel: "leave this expression as text". Config resolution does not know the current item
 // yet, so {{item.x}} stays in place until Transform resolves it per item.
 const KEEP = Symbol("keep");
