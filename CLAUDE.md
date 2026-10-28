@@ -81,4 +81,5 @@ Build explainability into the product itself:
 - Backend (from `backend/`): `npm run dev` (watch mode) or `npm start`, serves on port 4000. Needs `backend/.env` (copy `.env.example`).
 - Frontend (from `frontend/`): `npm run dev` (port 5173, strict), `npm run build`, `npm test` (Vitest, helper modules only). Needs `frontend/.env`.
 - Tests (from `backend/`): `npm test` (Vitest + supertest + mongodb-memory-server; no real DB needed).
+- Run a workflow file through the engine (from `backend/`): `npm run engine:run -- examples/diamond.json [input.json | 'json']`. Set `DEBUG_ENGINE=true` for engine debug logs.
 - Seed example workflows: _TBD_

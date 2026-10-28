@@ -66,8 +66,8 @@ export async function runWorkflow({
         record.status = "skipped";
         record.skipReason = reason;
         context.nodes[nodeId] = { status: "skipped", output: null, error: null };
-        setOutgoing(nodeId, () => "inactive");
         debug(`skip ${nodeId}: ${reason}`);
+        setOutgoing(nodeId, () => "inactive");
         await send("node.skipped", { nodeId, status: "skipped", skipReason: reason });
     }
 

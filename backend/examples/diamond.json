@@ -1,0 +1,52 @@
+{
+  "name": "Order check (diamond)",
+  "description": "Condition picks a branch, both branches converge on one Transform, then an Output. Runs offline.",
+  "input": {
+    "status": 200,
+    "orders": [
+      { "id": "A-1", "customer": "Ann", "total": "120" },
+      { "id": "A-2", "customer": "Bob", "total": "40" }
+    ]
+  },
+  "nodes": [
+    { "id": "trigger-1", "type": "manualTrigger", "position": { "x": 0, "y": 0 }, "data": { "label": "Start", "config": {} } },
+    {
+      "id": "check-1", "type": "condition", "position": { "x": 220, "y": 0 },
+      "data": { "label": "Status OK?", "config": { "left": "{{input.status}}", "operator": "equals", "right": "200" } }
+    },
+    {
+      "id": "big-orders", "type": "transform", "position": { "x": 440, "y": -80 },
+      "data": { "label": "Big orders", "config": { "operations": [
+        { "type": "filter", "params": { "path": "orders", "field": "total", "operator": "greaterThan", "value": "100" } },
+        { "type": "map", "params": { "path": "orders", "field": "note", "value": "{{item.customer}} spent {{item.total}}" } }
+      ] } }
+    },
+    {
+      "id": "unavailable", "type": "transform", "position": { "x": 440, "y": 80 },
+      "data": { "label": "Mark unavailable", "config": { "operations": [
+        { "type": "map", "params": { "path": "orders", "field": "note", "value": "status unavailable" } }
+      ] } }
+    },
+    {
+      "id": "merge-1", "type": "transform", "position": { "x": 660, "y": 0 },
+      "data": { "label": "Keep orders", "config": { "operations": [
+        { "type": "select", "params": { "fields": ["orders"] } }
+      ] } }
+    },
+    {
+      "id": "output-1", "type": "output", "position": { "x": 880, "y": 0 },
+      "data": { "label": "Report", "config": {
+        "message": "First note: {{nodes.merge-1.output.orders.0.note}}",
+        "data": [{ "key": "orders", "value": "{{nodes.merge-1.output.orders}}" }]
+      } }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "trigger-1", "target": "check-1", "sourceHandle": null },
+    { "id": "e2", "source": "check-1", "target": "big-orders", "sourceHandle": "true" },
+    { "id": "e3", "source": "check-1", "target": "unavailable", "sourceHandle": "false" },
+    { "id": "e4", "source": "big-orders", "target": "merge-1", "sourceHandle": null },
+    { "id": "e5", "source": "unavailable", "target": "merge-1", "sourceHandle": null },
+    { "id": "e6", "source": "merge-1", "target": "output-1", "sourceHandle": null }
+  ]
+}

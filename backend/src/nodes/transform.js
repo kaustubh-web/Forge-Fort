@@ -63,22 +63,28 @@ function arrayAt(data, path, opType) {
     return { list, put: (newList) => setPath(data, keys, newList) };
 }
 
+// Error messages are stored and shown in the log, so they show only a short preview of the value.
+function preview(value) {
+    const text = value === undefined ? "undefined" : JSON.stringify(value);
+    return text.length > 50 ? `${text.slice(0, 50)}...` : text;
+}
+
 function toNumber(value, field) {
     const number = typeof value === "string" && value.trim() === "" ? NaN : Number(value);
-    if (!Number.isFinite(number)) throw new NodeError(`Cannot convert "${field}" (${JSON.stringify(value)}) to a number`);
+    if (!Number.isFinite(number)) throw new NodeError(`Cannot convert "${field}" (${preview(value)}) to a number`);
     return number;
 }
 
 function toBoolean(value, field) {
     if (value === true || value === "true" || value === 1 || value === "1") return true;
     if (value === false || value === "false" || value === 0 || value === "0") return false;
-    throw new NodeError(`Cannot convert "${field}" (${JSON.stringify(value)}) to a boolean`);
+    throw new NodeError(`Cannot convert "${field}" (${preview(value)}) to a boolean`);
 }
 
 function toDate(value, field) {
     const date = new Date(value);
     if (value === null || value === "" || Number.isNaN(date.getTime())) {
-        throw new NodeError(`Cannot convert "${field}" (${JSON.stringify(value)}) to a date`);
+        throw new NodeError(`Cannot convert "${field}" (${preview(value)}) to a date`);
     }
     return date.toISOString();
 }

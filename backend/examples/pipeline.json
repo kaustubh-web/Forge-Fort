@@ -1,0 +1,36 @@
+{
+  "name": "Adult users (transform pipeline)",
+  "description": "One Transform with filter, map, rename, merge and select, then an Output. Runs offline.",
+  "input": {
+    "meta": { "source": "crm", "exportedAt": "2026-10-28" },
+    "users": [
+      { "name": "Ann", "age": "31", "email": "ann@example.com" },
+      { "name": "Bob", "age": "17", "email": "bob@example.com" },
+      { "name": "Cy", "age": "45", "email": "cy@example.com" }
+    ]
+  },
+  "nodes": [
+    { "id": "trigger-1", "type": "manualTrigger", "position": { "x": 0, "y": 0 }, "data": { "label": "Start", "config": {} } },
+    {
+      "id": "adults", "type": "transform", "position": { "x": 220, "y": 0 },
+      "data": { "label": "Adults only", "config": { "operations": [
+        { "type": "filter", "params": { "path": "users", "field": "age", "operator": "greaterThan", "value": "18" } },
+        { "type": "map", "params": { "path": "users", "field": "label", "value": "{{item.name}} ({{item.age}})" } },
+        { "type": "select", "params": { "fields": ["users"] } },
+        { "type": "rename", "params": { "from": "users", "to": "adults" } },
+        { "type": "merge", "params": { "source": "{{input.meta}}" } }
+      ] } }
+    },
+    {
+      "id": "output-1", "type": "output", "position": { "x": 440, "y": 0 },
+      "data": { "label": "Result", "config": {
+        "message": "From {{nodes.adults.output.source}}: {{nodes.adults.output.adults.0.label}}, {{nodes.adults.output.adults.1.label}}",
+        "data": [{ "key": "adults", "value": "{{nodes.adults.output.adults}}" }]
+      } }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "trigger-1", "target": "adults", "sourceHandle": null },
+    { "id": "e2", "source": "adults", "target": "output-1", "sourceHandle": null }
+  ]
+}

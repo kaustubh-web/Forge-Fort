@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "engine:run": "node scripts/run-workflow.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

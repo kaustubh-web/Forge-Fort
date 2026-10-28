@@ -2,7 +2,7 @@
 
 A visual workflow builder (React Flow) with a custom Node.js execution engine. Users connect nodes on a canvas, run workflows on the backend, and inspect persisted results.
 
-> Status: Phase 1 (setup and auth) complete. Editor, engine, nodes and live updates arrive in Phases 2-6. See `docs/SPEC.md` for scope and `docs/ARCHITECTURE.md` for how execution will work.
+> Status: Phases 1-3 complete (auth, editor, execution engine). HTTP/AI nodes, the execute API and live updates arrive in Phases 4-6. See `docs/SPEC.md` for scope and `docs/ARCHITECTURE.md` for how execution works.
 
 ## Structure
 - `backend/` Express + MongoDB (Mongoose) API
@@ -39,6 +39,8 @@ Generate a secret: `node -e "console.log(require('crypto').randomBytes(48).toStr
 | `CORS_ORIGIN` | Allowed frontend origin | required |
 | `AUTH_RATE_LIMIT` | Auth requests per IP per 15 min | 20 |
 | `NODE_ENV` | development / test / production | development |
+| `MAX_NODES` / `MAX_EDGES` | Workflow size limits | 50 / 100 |
+| `DEBUG_ENGINE` | `true` prints the engine's run order, edge states and decisions | false |
 
 The server validates these at startup and refuses to boot if any are missing or invalid.
 
@@ -75,9 +77,40 @@ The workflow JSON (SPEC section 3) is validated with Zod in `backend/src/schema/
 - A validation panel lists problems before a run (no trigger, cycles, unconnected nodes, missing config). Clicking a problem selects the node.
 - Run and Stop are disabled until the execution engine exists (Phases 3-5).
 
+## Execution engine (Phase 3)
+The engine lives in `backend/src/engine/`. It runs in-process and sequentially. There is no API route yet (Phase 5 adds `POST /api/workflows/:id/execute`), so try it with the CLI runner:
+```bash
+cd backend
+npm run engine:run -- examples/diamond.json                                # true branch
+npm run engine:run -- examples/diamond.json examples/diamond-error-input.json  # false branch
+npm run engine:run -- examples/pipeline.json
+DEBUG_ENGINE=true npm run engine:run -- examples/diamond.json              # bash; in PowerShell: $env:DEBUG_ENGINE="true"
+```
+
+**Execution flow** (`runWorkflow.js`)
+1. `validateForRun`: schema again, exactly one trigger with no inputs, no cycles (Kahn), every node reachable from the trigger (BFS), required config filled in, the node type has a handler, and every `{{nodes.X...}}` points at an ancestor. Any problem means 400 `INVALID_WORKFLOW` with the full list, and nothing runs.
+2. Topological order with Kahn's algorithm, deterministic.
+3. For each node in order: stop if cancelled; skip it if no incoming edge is `active` (with a reason such as "Condition 'check-1' took the false branch"); otherwise resolve `{{...}}` expressions and run the handler.
+4. Edge states: success makes outgoing edges `active`. A Condition activates only its chosen handle. Skipped and failed nodes make outgoing edges `inactive`.
+5. On a failure: the node is `failed`, every remaining node is `skipped` ("upstream failed"), the execution is `failed`, and partial results are kept.
+6. Every state change is emitted as a SPEC event (`node.started`, `node.skipped`, ...). Phase 5 persists and streams these.
+
+**Expressions**: `{{nodes.<id>.output.<path>}}`, `{{input.<path>}}` (trigger input), and `{{item.<path>}}` (Transform map only). A whole-string expression keeps its type; embedded ones become text. A missing field is empty, but a reference to a node that did not run is an error. The resolver only walks own properties and rejects `__proto__`/`prototype`/`constructor`. There is no eval (`docs/decisions/expressions.md`).
+
+**Nodes** (`backend/src/nodes/`, one file each, registered in `registry.js`)
+| Type | Runs? | Output |
+|---|---|---|
+| `manualTrigger` | yes | the run input |
+| `condition` | yes | its input, unchanged, plus a `true`/`false` branch. Operators: equals, notEquals, contains, greaterThan, lessThan, isEmpty, isNotEmpty |
+| `transform` | yes | the input after the ordered operations: select, rename, filter, map, merge, convert (string/number/boolean/date) |
+| `output` | yes | `{ message, data }`; the message also goes to the execution log |
+| `httpRequest`, `aiText` | Phase 4 | schema only; validation refuses to run them |
+
+A node's input is the output of its first active parent. Any other earlier node can be read with an expression.
+
 ## Tests
 ```bash
-cd backend && npm test     # API tests, in-memory MongoDB
+cd backend && npm test     # API + engine tests, in-memory MongoDB
 cd frontend && npm test    # graph validation and conversion helpers
 cd frontend && npm run build
 ```
@@ -91,7 +124,9 @@ The backend tests use an in-memory MongoDB, so they never touch your real databa
 
 ## Limitations
 - The auth token is stored in `localStorage` (see `docs/decisions/auth-storage.md`).
-- Workflows can be built, saved and loaded, but not run yet (no engine until Phase 3).
+- The engine runs only through the CLI runner and tests until the execute route (Phase 5). The Run button is still disabled.
+- Execution is in-process and sequential: no parallel branches, single server instance.
+- No retries or per-node timeouts yet (Phase 4).
 - The "unsaved changes" warning only covers closing or reloading the tab, not clicking a link inside the app.
 
 More sections (nodes, execution flow, deployment, future work) are added as each phase lands.
