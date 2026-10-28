@@ -42,7 +42,7 @@ Generate a secret: `node -e "console.log(require('crypto').randomBytes(48).toStr
 
 The server validates these at startup and refuses to boot if any are missing or invalid.
 
-## API (Phase 1)
+## API (Phases 1-2)
 All responses use `{ success: true, data }` or `{ success: false, error: { code, message, details } }`.
 
 | Method | Path | Auth | Description |
@@ -54,11 +54,34 @@ All responses use `{ success: true, data }` or `{ success: false, error: { code,
 
 Send the token as `Authorization: Bearer <token>`.
 
+### Workflows
+All workflow routes need a Bearer token and only ever touch the caller's own workflows. Another user's workflow, or a malformed id, returns 404 (never 403).
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/workflows` | Body: `{ name, description, nodes, edges }`. 201 with `{ workflow }`. 400 if the graph is invalid. |
+| GET | `/api/workflows` | Summaries only (`name`, `description`, timestamps), newest first. |
+| GET | `/api/workflows/:id` | The full workflow including nodes and edges. |
+| PUT | `/api/workflows/:id` | Replaces the workflow. Same validation as POST. |
+| DELETE | `/api/workflows/:id` | Deletes it. |
+| POST | `/api/workflows/:id/duplicate` | Creates `<name> (copy)`. 201. |
+
+The workflow JSON (SPEC section 3) is validated with Zod in `backend/src/schema/workflow.js`: node types, the config schema for each type (`backend/src/nodes/registry.js`), unique node ids (letters, digits, `-`, `_` only), edges that reference real nodes, `true`/`false` handles only on Condition nodes (and required there), no self-loops, no duplicate edges, at most 50 nodes and 100 edges. Unknown fields are stripped. Drafts may be incomplete: required-config and "exactly one trigger" checks happen at run time.
+
+## Editor (frontend)
+- Dashboard: list, create, duplicate and delete workflows.
+- Editor at `/workflows/:id`: drag nodes from the palette, connect them, configure the selected node in the right panel. Condition nodes have labelled `true` and `false` outputs.
+- Shortcuts: Ctrl+S save, Delete removes the selected node, Ctrl+D duplicates it.
+- A validation panel lists problems before a run (no trigger, cycles, unconnected nodes, missing config). Clicking a problem selects the node.
+- Run and Stop are disabled until the execution engine exists (Phases 3-5).
+
 ## Tests
 ```bash
-cd backend && npm test
+cd backend && npm test     # API tests, in-memory MongoDB
+cd frontend && npm test    # graph validation and conversion helpers
+cd frontend && npm run build
 ```
-Uses an in-memory MongoDB, so it never touches your real database.
+The backend tests use an in-memory MongoDB, so they never touch your real database. React components do not have automated tests yet.
 
 ## Security notes (so far)
 - Passwords hashed with bcrypt (12 rounds); the hash is never returned by the API.
@@ -68,6 +91,7 @@ Uses an in-memory MongoDB, so it never touches your real database.
 
 ## Limitations
 - The auth token is stored in `localStorage` (see `docs/decisions/auth-storage.md`).
-- No workflow features yet.
+- Workflows can be built, saved and loaded, but not run yet (no engine until Phase 3).
+- The "unsaved changes" warning only covers closing or reloading the tab, not clicking a link inside the app.
 
 More sections (nodes, execution flow, deployment, future work) are added as each phase lands.
