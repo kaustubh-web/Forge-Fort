@@ -11,6 +11,8 @@ const schema = z.object({
   AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(20),
   MAX_NODES: z.coerce.number().int().positive().default(50),
   MAX_EDGES: z.coerce.number().int().positive().default(100),
+  // Prints run order, edge states and branch/skip decisions (engine/debug.js)
+  DEBUG_ENGINE: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 });
 
 const result = schema.safeParse(process.env);
