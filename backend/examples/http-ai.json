@@ -1,0 +1,36 @@
+{
+  "name": "Classify an API post (HTTP + AI)",
+  "description": "Example workflow 3. Fetches a post from a public API and classifies its topic with AI. Needs internet and an AI key.",
+  "input": { "postId": 3 },
+  "nodes": [
+    { "id": "trigger-1", "type": "manualTrigger", "position": { "x": 0, "y": 0 }, "data": { "label": "Start", "config": {} } },
+    {
+      "id": "http-1", "type": "httpRequest", "position": { "x": 220, "y": 0 },
+      "data": { "label": "Get post", "config": {
+        "method": "GET",
+        "url": "https://jsonplaceholder.typicode.com/posts/{{input.postId}}"
+      } }
+    },
+    {
+      "id": "ai-1", "type": "aiText", "position": { "x": 440, "y": 0 },
+      "data": { "label": "Classify tone", "config": {
+        "mode": "classify",
+        "instructions": "Classify the overall tone of this post.",
+        "input": "{{nodes.http-1.output.body.body}}",
+        "categories": ["Positive", "Neutral", "Negative"]
+      } }
+    },
+    {
+      "id": "output-1", "type": "output", "position": { "x": 660, "y": 0 },
+      "data": { "label": "Result", "config": {
+        "message": "Post {{input.postId}} \"{{nodes.http-1.output.body.title}}\" is {{nodes.ai-1.output.category}}",
+        "data": [{ "key": "category", "value": "{{nodes.ai-1.output.category}}" }]
+      } }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "trigger-1", "target": "http-1", "sourceHandle": null },
+    { "id": "e2", "source": "http-1", "target": "ai-1", "sourceHandle": null },
+    { "id": "e3", "source": "ai-1", "target": "output-1", "sourceHandle": null }
+  ]
+}

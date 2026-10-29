@@ -1,0 +1,48 @@
+{
+  "name": "Todo status check (HTTP + Condition)",
+  "description": "Example workflow 2. Fetches a todo from a real public API, branches on body.completed, then merges. Needs internet, no AI key.",
+  "input": { "todoId": 1 },
+  "nodes": [
+    { "id": "trigger-1", "type": "manualTrigger", "position": { "x": 0, "y": 0 }, "data": { "label": "Start", "config": {} } },
+    {
+      "id": "http-1", "type": "httpRequest", "position": { "x": 220, "y": 0 },
+      "data": { "label": "Get todo", "config": {
+        "method": "GET",
+        "url": "https://jsonplaceholder.typicode.com/todos/{{input.todoId}}",
+        "headers": [{ "key": "Accept", "value": "application/json" }],
+        "timeoutMs": 10000,
+        "retry": { "maxAttempts": 3, "backoffMs": 500 }
+      } }
+    },
+    {
+      "id": "check-1", "type": "condition", "position": { "x": 440, "y": 0 },
+      "data": { "label": "Completed?", "config": { "left": "{{nodes.http-1.output.body.completed}}", "operator": "equals", "right": "true" } }
+    },
+    {
+      "id": "done-1", "type": "transform", "position": { "x": 660, "y": -80 },
+      "data": { "label": "Shape done todo", "config": { "operations": [
+        { "type": "select", "params": { "fields": ["body"] } },
+        { "type": "rename", "params": { "from": "body", "to": "todo" } }
+      ] } }
+    },
+    {
+      "id": "pending-1", "type": "output", "position": { "x": 660, "y": 80 },
+      "data": { "label": "Not done", "config": { "message": "Todo {{input.todoId}} is still open: {{nodes.http-1.output.body.title}}" } }
+    },
+    {
+      "id": "output-1", "type": "output", "position": { "x": 880, "y": 0 },
+      "data": { "label": "Result", "config": {
+        "message": "Checked todo {{input.todoId}} (HTTP {{nodes.http-1.output.status}}): completed = {{nodes.http-1.output.body.completed}}",
+        "data": [{ "key": "title", "value": "{{nodes.http-1.output.body.title}}" }]
+      } }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "trigger-1", "target": "http-1", "sourceHandle": null },
+    { "id": "e2", "source": "http-1", "target": "check-1", "sourceHandle": null },
+    { "id": "e3", "source": "check-1", "target": "done-1", "sourceHandle": "true" },
+    { "id": "e4", "source": "check-1", "target": "pending-1", "sourceHandle": "false" },
+    { "id": "e5", "source": "done-1", "target": "output-1", "sourceHandle": null },
+    { "id": "e6", "source": "pending-1", "target": "output-1", "sourceHandle": null }
+  ]
+}
