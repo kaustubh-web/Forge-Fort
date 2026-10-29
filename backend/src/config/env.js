@@ -11,6 +11,9 @@ const schema = z.object({
   AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(20),
   MAX_NODES: z.coerce.number().int().positive().default(50),
   MAX_EDGES: z.coerce.number().int().positive().default(100),
+  // Engine limits (SPEC section 4). A node's own timeoutMs overrides NODE_TIMEOUT_MS.
+  NODE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(30000),
+  WORKFLOW_TIMEOUT_MS: z.coerce.number().int().min(1000).default(300000),
   // Prints run order, edge states and branch/skip decisions (engine/debug.js)
   DEBUG_ENGINE: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 });

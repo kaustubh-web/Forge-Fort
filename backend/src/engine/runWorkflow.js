@@ -2,8 +2,13 @@ import { randomUUID } from "node:crypto";
 import { nodeRegistry } from "../nodes/registry.js";
 import { validateForRun } from "./validateForRun.js";
 import { resolveConfig } from "./expressions.js";
-import { NodeError } from "./errors.js";
+import { NodeError, CancelledError, WorkflowTimeoutError } from "./errors.js";
+import { backoffDelay, sleep, raceAbort } from "./retry.js";
 import { debug } from "./debug.js";
+import { env } from "../config/env.js";
+
+// Nodes without a retry policy (in their config or their definition) run once.
+const NO_RETRY = { maxAttempts: 1, backoffMs: 0 };
 
 // The execution engine (docs/ARCHITECTURE.md sections 3-5).
 //
@@ -11,14 +16,16 @@ import { debug } from "./debug.js";
 //     cancelled?             stop, mark the rest skipped, execution "cancelled"
 //     no active input edge?  skip it (with a reason), its outgoing edges become inactive
 //     otherwise              resolve {{expressions}}, run the handler, set outgoing edge states
-//     handler failed?        node "failed", the rest skipped ("upstream failed"), execution "failed"
+//     handler failed?        transient error: wait (backoff) and retry, up to maxAttempts
+//                            otherwise: node "failed", the rest skipped ("upstream failed"), execution "failed"
 //
 // Sequential and in-process on purpose: simple to follow and debug. Each node is visited
 // exactly once (one pass over the topological order), so no node can ever run twice.
 //
 // `emit(event)` is called for every state change, with the SPEC event names. It is awaited, so
 // Phase 5 can persist the execution and push SSE events from it before the next node starts.
-// `signal` is an AbortSignal; Phase 4 also passes it into HTTP and AI calls.
+// `signal` is the caller's AbortSignal (the Stop button). It reaches the HTTP and AI calls.
+// `limits` defaults to the env values; tests pass small ones so they run fast.
 export async function runWorkflow({
     workflow: rawWorkflow,
     input = {},
@@ -26,10 +33,21 @@ export async function runWorkflow({
     workflowId = null,
     signal,
     emit = () => {},
+    limits = {},
 }) {
     // Throws 400 INVALID_WORKFLOW before anything runs.
     const { workflow, graph, order } = validateForRun(rawWorkflow);
     debug("order:", order.join(" -> "));
+
+    const nodeTimeoutMs = limits.nodeTimeoutMs ?? env.NODE_TIMEOUT_MS;
+    const workflowTimeoutMs = limits.workflowTimeoutMs ?? env.WORKFLOW_TIMEOUT_MS;
+
+    // One signal for the whole run that fires on Stop OR when the workflow deadline passes.
+    // We keep both sources so we can tell afterwards WHY it fired: Stop means "cancelled",
+    // the deadline means "failed".
+    const deadline = AbortSignal.timeout(workflowTimeoutMs);
+    const runSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
+    const stopError = () => (deadline.aborted ? new WorkflowTimeoutError(workflowTimeoutMs) : new CancelledError());
 
     // Execution context. `nodes` is also the scope that {{nodes.<id>.output}} reads from.
     const context = {
@@ -92,11 +110,18 @@ export async function runWorkflow({
         const node = graph.nodeById.get(nodeId);
         const record = records.get(nodeId);
 
-        // Cancellation is checked before every node. The node that is already running is not
-        // interrupted here; in Phase 4 the same signal aborts its HTTP/AI call.
-        if (signal?.aborted) {
-            context.status = "cancelled";
-            await skipAll(order.slice(i), "execution cancelled");
+        // Stop / deadline is checked before every node. A node that is already running is
+        // interrupted inside executeNode instead (its signal aborts the HTTP/AI call).
+        if (runSignal.aborted) {
+            const error = stopError();
+            if (error instanceof CancelledError) {
+                context.status = "cancelled";
+                await skipAll(order.slice(i), "execution cancelled");
+            } else {
+                context.status = "failed";
+                context.error = { nodeId: null, message: error.message };
+                await skipAll(order.slice(i), "workflow timed out");
+            }
             break;
         }
 
@@ -125,24 +150,31 @@ export async function runWorkflow({
 
         let result;
         try {
-            result = await executeNode(node, record, context, signal);
+            result = await executeNode(node, record, context, { runSignal, stopError, nodeTimeoutMs });
         } catch (error) {
-            // NodeError = an expected, explainable failure. Anything else is a bug in our code:
-            // still fail the node with its message (never swallow it), and print the stack.
-            if (!(error instanceof NodeError)) console.error(`[engine] unexpected error in ${nodeId}:`, error);
-            const message = error instanceof NodeError ? error.message : `Unexpected error: ${error.message}`;
+            // NodeError / CancelledError = an expected, explainable stop. Anything else is a bug
+            // in our code: still fail the node with its message (never swallow it), print the stack.
+            const expected = error instanceof NodeError || error instanceof CancelledError;
+            if (!expected) console.error(`[engine] unexpected error in ${nodeId}:`, error);
+            const message = expected ? error.message : `Unexpected error: ${error.message}`;
+            // Stop pressed mid-node: the node did not finish, so it is "failed" with "Cancelled",
+            // but the execution as a whole is "cancelled" (the user's choice, not an error).
+            const cancelled = error instanceof CancelledError;
 
             finish(record, "failed");
             record.error = message;
             context.nodes[nodeId] = { status: "failed", output: null, error: message };
             setOutgoing(nodeId, () => "inactive");
-            context.status = "failed";
-            context.error = { nodeId, message };
+            context.status = cancelled ? "cancelled" : "failed";
+            context.error = cancelled ? null : { nodeId, message };
             debug(`fail ${nodeId}: ${message}`);
-            await send("node.failed", { nodeId, status: "failed", error: message });
+            await send("node.failed", { nodeId, status: "failed", error: message, attempts: record.attempts });
 
             // Sequential engine: after a failure nothing else runs. Partial results are kept.
-            await skipAll(order.slice(i + 1), "upstream failed");
+            let reason = "upstream failed";
+            if (cancelled) reason = "execution cancelled";
+            else if (error instanceof WorkflowTimeoutError) reason = "workflow timed out";
+            await skipAll(order.slice(i + 1), reason);
             break;
         }
 
@@ -196,6 +228,7 @@ function newRecord(node) {
         input: null,
         output: null,
         attempts: 0,
+        attemptLog: [], // one entry per failed attempt: { attempt, error, waitMs }
         error: null,
         skipReason: null,
         branch: null,
@@ -211,19 +244,64 @@ function finish(record, status) {
     record.durationMs = record.endedAt - record.startedAt;
 }
 
-// Run one node's handler. This is the seam for Phase 4: per-node timeout, the AbortSignal
-// passed into HTTP/AI calls, and retries of errors with `retryable: true` all wrap this call.
-async function executeNode(node, record, context, signal) {
+// Run one node: its handler, with a timeout per attempt, retries for transient errors, and the
+// run's abort signal. Throws NodeError (failed), CancelledError (Stop) or WorkflowTimeoutError.
+async function executeNode(node, record, context, { runSignal, stopError, nodeTimeoutMs }) {
     const definition = nodeRegistry[node.type];
 
     // Expressions are resolved at run time, against the outputs that exist right now.
-    // The stored config is never modified.
+    // The stored config is never modified. Resolved once: every attempt sends the same request.
     const config = resolveConfig(node.data.config, { nodes: context.nodes, input: context.input });
 
-    record.attempts += 1;
+    // Policy: the node's own config wins, then the type's default (HTTP/AI retry), then run once.
+    const { maxAttempts, backoffMs } = config.retry ?? definition.defaultRetry ?? NO_RETRY;
+    const timeoutMs = config.timeoutMs ?? nodeTimeoutMs;
     const log = (message) => context.logs.push({ nodeId: node.id, message, at: new Date() });
-    const result = await definition.execute({ config, input: record.input, signal, log, node });
 
-    if (!result || !("output" in result)) throw new Error(`Handler for ${node.type} returned no output`);
+    for (let attempt = 1; ; attempt++) {
+        record.attempts = attempt;
+        try {
+            return await runAttempt(definition, { config, input: record.input, log, node }, { runSignal, stopError, timeoutMs });
+        } catch (error) {
+            // Retry only errors the handler marked as transient. A Stop, a workflow timeout,
+            // a bad config or a 404 would fail the same way again, so they end the node now.
+            const retryable = error instanceof NodeError && error.retryable;
+            if (!retryable || attempt >= maxAttempts) {
+                record.attemptLog.push({ attempt, error: error.message, waitMs: null });
+                throw error;
+            }
+            const waitMs = backoffDelay(attempt, backoffMs, error.retryAfterMs);
+            record.attemptLog.push({ attempt, error: error.message, waitMs });
+            debug(`  ${node.id} attempt ${attempt} failed (${error.message}), retrying in ${waitMs} ms`);
+            try {
+                await sleep(waitMs, runSignal); // Stop during the wait ends it at once
+            } catch {
+                throw stopError();
+            }
+        }
+    }
+}
+
+// One attempt = one handler call with its own signal. That signal fires when:
+//   - the user presses Stop or the workflow deadline passes (runSignal), or
+//   - this attempt runs longer than timeoutMs.
+// The handler passes it to fetch / the AI SDK, which closes the connection. raceAbort makes sure
+// we stop waiting even if a handler ignores it.
+async function runAttempt(definition, args, { runSignal, stopError, timeoutMs }) {
+    const signal = AbortSignal.any([runSignal, AbortSignal.timeout(timeoutMs)]);
+    let result;
+    try {
+        // Promise.resolve().then(...) turns a synchronous throw in a handler into a rejection.
+        result = await raceAbort(Promise.resolve().then(() => definition.execute({ ...args, signal })), signal);
+    } catch (error) {
+        // Whatever the handler threw after an abort (AbortError, "fetch failed"...), replace it
+        // with an error that says why it stopped. Only the per-node timeout is worth retrying.
+        if (signal.aborted) {
+            if (runSignal.aborted) throw stopError();
+            throw new NodeError(`Timed out after ${timeoutMs} ms`, { retryable: true });
+        }
+        throw error;
+    }
+    if (!result || !("output" in result)) throw new Error(`Handler for ${args.node.type} returned no output`);
     return result;
 }

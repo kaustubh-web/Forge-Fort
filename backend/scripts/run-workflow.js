@@ -28,8 +28,17 @@ const workflow = readJson(readFileSync(file, "utf8"), file);
 let input = workflow.input ?? {};
 if (inputArg) input = readJson(existsSync(inputArg) ? readFileSync(inputArg, "utf8") : inputArg, "Input");
 
+// Ctrl+C cancels the run the same way POST /cancel will: abort the signal, let the engine finish
+// cleanly and print the partial result. A second Ctrl+C exits at once.
+const controller = new AbortController();
+process.once("SIGINT", () => {
+    console.log("\nCancelling... (press Ctrl+C again to force quit)");
+    controller.abort();
+    process.once("SIGINT", () => process.exit(130));
+});
+
 try {
-    const result = await runWorkflow({ workflow, input });
+    const result = await runWorkflow({ workflow, input, signal: controller.signal });
 
     console.log(`\n${workflow.name}: ${result.status.toUpperCase()} in ${result.durationMs} ms\n`);
     result.nodes.forEach((r, i) => {
