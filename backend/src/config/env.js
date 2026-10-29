@@ -14,6 +14,8 @@ const schema = z.object({
   // Engine limits (SPEC section 4). A node's own timeoutMs overrides NODE_TIMEOUT_MS.
   NODE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(30000),
   WORKFLOW_TIMEOUT_MS: z.coerce.number().int().min(1000).default(300000),
+  HTTP_MAX_RESPONSE_BYTES: z.coerce.number().int().positive().default(1024 * 1024),
+  HTTP_MAX_REDIRECTS: z.coerce.number().int().min(0).max(20).default(5),
   // Prints run order, edge states and branch/skip decisions (engine/debug.js)
   DEBUG_ENGINE: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 });

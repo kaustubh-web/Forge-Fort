@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateForRun } from "../../src/engine/validateForRun.js";
+import { nodeRegistry } from "../../src/nodes/registry.js";
 import { node, edge, workflow, trigger, output, condition, diamond } from "./fixtures.js";
 
 // Returns the issue messages, or [] when the workflow is runnable.
@@ -50,8 +51,15 @@ describe("validateForRun", () => {
     });
 
     it("rejects node types without a handler yet", () => {
-        const wf = workflow([trigger(), node("h", "httpRequest", { url: "https://example.com" })], [edge("trigger", "h")]);
-        expect(issues(wf)).toContain('Node "h" (httpRequest) cannot run yet: no handler');
+        // Every v1 type has a handler now, so take one away to check the guard for future types.
+        const { execute } = nodeRegistry.httpRequest;
+        delete nodeRegistry.httpRequest.execute;
+        try {
+            const wf = workflow([trigger(), node("h", "httpRequest", { url: "https://example.com" })], [edge("trigger", "h")]);
+            expect(issues(wf)).toContain('Node "h" (httpRequest) cannot run yet: no handler');
+        } finally {
+            nodeRegistry.httpRequest.execute = execute;
+        }
     });
 
     it("rejects expressions to unknown, later or unrelated nodes", () => {
