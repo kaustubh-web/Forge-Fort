@@ -59,6 +59,20 @@ describe("runWorkflow: branching", () => {
         expect(Object.keys(result.outputs)).toEqual(["yes"]);
     });
 
+    it("node events carry a copy of the record at that moment", async () => {
+        const { result, events } = await run(branchy(), { n: 10 });
+        const started = events.find((e) => e.type === "node.started" && e.nodeId === "check");
+        const completed = events.find((e) => e.type === "node.completed" && e.nodeId === "check");
+        const skipped = events.find((e) => e.type === "node.skipped");
+
+        // A copy: the "started" event still says running after the node finished.
+        expect(started.record).toMatchObject({ nodeId: "check", status: "running", output: null });
+        expect(completed.record).toEqual(record(result, "check"));
+        expect(completed.record).not.toBe(record(result, "check"));
+        expect(skipped.record).toMatchObject({ nodeId: "no", status: "skipped", skipReason: expect.any(String) });
+        expect(events.find((e) => e.type === "workflow.started").record).toBeUndefined();
+    });
+
     it("takes the false branch", async () => {
         const { result } = await run(branchy(), { n: 1 });
         expect(statuses(result)).toMatchObject({ yes: "skipped", no: "success" });

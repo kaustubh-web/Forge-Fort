@@ -23,7 +23,8 @@ const NO_RETRY = { maxAttempts: 1, backoffMs: 0 };
 // exactly once (one pass over the topological order), so no node can ever run twice.
 //
 // `emit(event)` is called for every state change, with the SPEC event names. It is awaited, so
-// Phase 5 can persist the execution and push SSE events from it before the next node starts.
+// the caller can persist the execution and push SSE events before the next node starts.
+// Node events carry `record`, a copy of that node's record, so the caller can store it as-is.
 // `signal` is the caller's AbortSignal (the Stop button). It reaches the HTTP and AI calls.
 // `limits` defaults to the env values; tests pass small ones so they run fast.
 export async function runWorkflow({
@@ -86,7 +87,7 @@ export async function runWorkflow({
         context.nodes[nodeId] = { status: "skipped", output: null, error: null };
         debug(`skip ${nodeId}: ${reason}`);
         setOutgoing(nodeId, () => "inactive");
-        await send("node.skipped", { nodeId, status: "skipped", skipReason: reason });
+        await send("node.skipped", { nodeId, status: "skipped", skipReason: reason, record: snapshot(record) });
     }
 
     async function skipAll(nodeIds, reason) {
@@ -146,7 +147,7 @@ export async function runWorkflow({
         record.status = "running";
         record.startedAt = new Date();
         debug(`run ${nodeId} (${node.type})`);
-        await send("node.started", { nodeId, status: "running" });
+        await send("node.started", { nodeId, status: "running", record: snapshot(record) });
 
         let result;
         try {
@@ -168,7 +169,13 @@ export async function runWorkflow({
             context.status = cancelled ? "cancelled" : "failed";
             context.error = cancelled ? null : { nodeId, message };
             debug(`fail ${nodeId}: ${message}`);
-            await send("node.failed", { nodeId, status: "failed", error: message, attempts: record.attempts });
+            await send("node.failed", {
+                nodeId,
+                status: "failed",
+                error: message,
+                attempts: record.attempts,
+                record: snapshot(record),
+            });
 
             // Sequential engine: after a failure nothing else runs. Partial results are kept.
             let reason = "upstream failed";
@@ -193,6 +200,7 @@ export async function runWorkflow({
             status: "success",
             branch: record.branch,
             durationMs: record.durationMs,
+            record: snapshot(record),
         });
     }
 
@@ -236,6 +244,13 @@ function newRecord(node) {
         endedAt: null,
         durationMs: null,
     };
+}
+
+// A copy for events: later changes to the live record (the next attempt, the final status) must
+// not change an event that was already sent or stored. Shallow is enough: the engine replaces
+// input/output/error instead of mutating them, and attemptLog is the only array it pushes to.
+function snapshot(record) {
+    return { ...record, attemptLog: [...record.attemptLog] };
 }
 
 function finish(record, status) {
