@@ -18,6 +18,18 @@ const schema = z.object({
   HTTP_MAX_REDIRECTS: z.coerce.number().int().min(0).max(20).default(5),
   // Prints run order, edge states and branch/skip decisions (engine/debug.js)
   DEBUG_ENGINE: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  // AI provider (optional). Unset = the server runs, AI nodes fail with "not configured".
+  // An empty line in .env (AI_PROVIDER=) counts as unset.
+  AI_PROVIDER: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["gemini", "openai"]).optional()),
+  GEMINI_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  AI_MODEL: z.string().optional(), // default model id; a node's own "model" overrides it
+  AI_OUTPUT_RETRIES: z.coerce.number().int().min(0).max(5).default(2), // re-asks after malformed output
+}).superRefine((env, ctx) => {
+  // A chosen provider must be usable: fail at startup, not on the first run.
+  const keyName = { gemini: "GEMINI_API_KEY", openai: "OPENAI_API_KEY" }[env.AI_PROVIDER];
+  if (keyName && !env[keyName]) ctx.addIssue({ code: "custom", path: [keyName], message: `required when AI_PROVIDER=${env.AI_PROVIDER}` });
+  if (env.AI_PROVIDER && !env.AI_MODEL) ctx.addIssue({ code: "custom", path: ["AI_MODEL"], message: "required when AI_PROVIDER is set" });
 });
 
 const result = schema.safeParse(process.env);

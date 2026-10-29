@@ -54,6 +54,9 @@ export function validateForRun(rawWorkflow) {
         const missing = definition.requiredFields(config);
         if (missing.length) add(node.id, `Node "${node.id}" is missing: ${missing.join(", ")}`);
 
+        // 6b. Type-specific checks that go beyond "is it filled in" (e.g. the AI extract schema).
+        for (const problem of definition.checkConfig?.(config) ?? []) add(node.id, `Node "${node.id}": ${problem}`);
+
         // 7. Expressions: valid syntax, and {{nodes.X...}} only for nodes that run before this one
         //    (ancestors). A reference to a later or unrelated node would always fail at run time.
         const ancestors = ancestorsOf(graph, node.id);

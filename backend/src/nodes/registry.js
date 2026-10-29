@@ -10,6 +10,8 @@ import { output } from "./output.js";
 //   configSchema    Zod schema for data.config. Lenient (all fields optional) so drafts can be saved.
 //                   Unknown keys are stripped, so only known, size-limited fields reach MongoDB.
 //   requiredFields  (config) -> list of missing field names. Checked only before a run.
+//   checkConfig     optional (config) -> list of problems beyond missing fields. Checked before a run.
+//   defaultRetry    optional { maxAttempts, backoffMs } for transient errors (HTTP, AI).
 //   execute         the handler that runs the node (missing = this type cannot run yet).
 // Adding a node type = adding one file and one line here.
 export const nodeRegistry = {
