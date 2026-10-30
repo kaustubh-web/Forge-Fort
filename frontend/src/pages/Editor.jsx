@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Play, Save, Square } from "lucide-react";
 import { toast } from "sonner";
 import { ReactFlowProvider, useNodesState, useEdgesState } from "@xyflow/react";
@@ -14,6 +14,17 @@ import NodePalette from "@/components/editor/NodePalette";
 import FlowCanvas from "@/components/editor/FlowCanvas";
 import ConfigPanel from "@/components/editor/ConfigPanel";
 import ValidationPanel from "@/components/editor/ValidationPanel";
+import { cn } from "@/lib/utils";
+import { useExecution } from "@/hooks/useExecution";
+import RunDialog from "@/components/editor/RunDialog";
+
+// Execution status -> badge dot colour and label (design tokens, see index.css).
+const RUN_STATUS = {
+  running: {dot: "bg-status-running animate-pulse",label:"Running"},
+  completed: {dot:"bg-status-success", label: "Completed"},
+  failed:{dot: "bg-status-failed", label:"Failed"},
+  cancelled: {dot:"bg-status-skipped", label:"Cancelled"},
+};
 
 
 // Outer component: only loads the workflow. The editor itself mounts once data exists,
@@ -68,6 +79,12 @@ function EditorInner({ workflow }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState(toFlowEdges(workflow.edges));
   const [saving, setSaving] = useState(false);
 
+  // Running. ?run=<executionId> in the URL keeps the current run across a page refresh.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { execution, connection, error: streamError, start, stop, load } = useExecution();
+  const [runOpen, setRunOpen] = useState(false);
+  const running = execution?.status === "running";
+
   // Dirty tracking: turn the canvas into the exact JSON we would save, as a string.
   // savedSnapshot is what the server has. If they differ, there are unsaved changes.
   // Comparing JSON (not React Flow state) means selecting or dragging back to the same spot is not "dirty".
@@ -91,31 +108,85 @@ function EditorInner({ workflow }) {
     setNodes((current) => current.map((n) => ({ ...n, selected: n.id === id })));
   }
 
+  // Returns true when the server has the current canvas (saved now, or nothing to save).
   async function save() {
-    if (!dirty || saving || !name.trim()) return;
+    if (!dirty) return true;
+    if (saving || !name.trim()) return false;
     setSaving(true);
     try {
       await updateWorkflow(workflow._id, payload);
       setSavedSnapshot(snapshot); // the version we sent, not whatever the canvas looks like now
       toast.success("Saved");
+      return true;
     } catch (err) {
       toast.error(getApiError(err).message);
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
-  // Ctrl+S. Re-subscribed after every render so save() always sees the latest state.
+  // Called by the Run dialog. The server runs the SAVED workflow, so save unsaved edits first.
+  // Throwing keeps the dialog open (RunDialog catches it).
+  async function runWorkflow(input) {
+    if (!(await save())) throw new Error("not saved");
+    try {
+      const executionId = await start(workflow._id, input);
+      setSearchParams({ run: executionId }, { replace: true });
+      setRunOpen(false);
+    } catch (err) {
+      // 400 INVALID_WORKFLOW lists the problems in details; show the first one.
+      const { message, details } = getApiError(err);
+      toast.error(details?.length ? `${message}: ${details[0].message}` : message);
+      throw err;
+    }
+  }
+
+  async function stopRun() {
+    try {
+      await stop();
+    } catch (err) {
+      toast.error(getApiError(err).message); // e.g. 409 "Execution is already completed"
+    }
+  }
+
+  // After a refresh (or opening a shared link), pick up the run named in the URL.
+  // Runs once on mount: later ?run= changes come from runWorkflow, which already connected.
+  useEffect(() => {
+    const runId = searchParams.get("run");
+    if (runId) load(runId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // One toast when a run we watched live finishes. A finished run loaded from the URL is not
+  // announced, because its status never was "running" here.
+  const lastStatus = useRef(null);
+  useEffect(() => {
+    const status = execution?.status ?? null;
+    if (lastStatus.current === "running" && status && status !== "running") {
+      if (status === "completed") toast.success("Run completed");
+      else if (status === "failed") toast.error(`Run failed: ${execution.error?.message ?? "see the log"}`);
+      else toast("Run cancelled");
+    }
+    lastStatus.current = status;
+  }, [execution]);
+
+  // Ctrl+S saves, Ctrl+Enter opens the Run dialog. Re-subscribed after every render so the
+  // handler always sees the latest state.
   useEffect(() => {
     function onKeyDown(event) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault(); // stop the browser's "save page" dialog
         save();
       }
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !runOpen && !running && hasTrigger) {
+        event.preventDefault();
+        setRunOpen(true);
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [save]);
+  }, [save, runOpen, running, hasTrigger]);
 
   // Warn before closing or reloading the tab with unsaved changes.
   useEffect(() => {
@@ -142,20 +213,31 @@ function EditorInner({ workflow }) {
         />
 
         <div className="ml-auto flex items-center gap-2">
+          {execution && (
+            <span className="flex items-center gap-1.5 text-xs" title={streamError ?? undefined}>
+              <span className={cn("size-2 rounded-full", RUN_STATUS[execution.status]?.dot)} />
+              {RUN_STATUS[execution.status]?.label}
+              {connection === "reconnecting" && <span className="text-muted-foreground">(reconnecting...)</span>}
+              {connection === "error" && <span className="text-status-failed">(live updates lost)</span>}
+            </span>
+          )}
           <span className="text-xs text-muted-foreground">
             {saving ? "Saving..." : dirty ? "Unsaved changes" : "Saved"}
           </span>
-          {/* Run and Stop need the engine (Phase 3-5). Disabled buttons do not show tooltips, so title goes on the span. */}
-          <span title="Running workflows arrives in a later phase">
-            <Button variant="outline" size="sm" disabled>
+          {/* Disabled buttons do not show tooltips, so the title goes on a wrapping span. */}
+          <span title={hasTrigger ? "Run (Ctrl+Enter)" : "Add a Manual Trigger first"}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRunOpen(true)}
+              disabled={running || !hasTrigger || !name.trim()}
+            >
               <Play /> Run
             </Button>
           </span>
-          <span title="Nothing is running">
-            <Button variant="outline" size="sm" disabled>
-              <Square /> Stop
-            </Button>
-          </span>
+          <Button variant="outline" size="sm" onClick={stopRun} disabled={!running}>
+            <Square /> Stop
+          </Button>
           <Button size="sm" onClick={save} disabled={!dirty || saving || !name.trim()}>
             <Save /> Save
           </Button>
@@ -177,6 +259,10 @@ function EditorInner({ workflow }) {
         </div>
         {selected && <ConfigPanel key={selected.id} node={selected} onChange={updateNodeData} />}
       </div>
+
+      {runOpen && (
+        <RunDialog initialInput={execution?.input} onRun={runWorkflow} onClose={() => setRunOpen(false)} />
+      )}
     </div>
   );
 }
