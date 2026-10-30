@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useExecution } from "@/hooks/useExecution";
 import { nodeStatuses, executedEdgeIds } from "@/lib/executionState";
 import RunDialog from "@/components/editor/RunDialog";
+import ExecutionLogPanel from "@/components/editor/ExecutionLogPanel";
 
 // Execution status -> badge dot colour and label (design tokens, see index.css).
 const RUN_STATUS = {
@@ -275,6 +276,7 @@ function EditorInner({ workflow }) {
         </div>
         {selected && <ConfigPanel key={selected.id} node={selected} onChange={updateNodeData} />}
       </div>
+      {execution && <ExecutionLogPanel execution={execution} />}
 
       {runOpen && (
         <RunDialog initialInput={execution?.input} onRun={runWorkflow} onClose={() => setRunOpen(false)} />
