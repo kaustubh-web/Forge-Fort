@@ -19,7 +19,7 @@ Live updates use Server-Sent Events at `GET /api/executions/:id/stream` (SPEC se
 ## Reconnect without event ids: the snapshot-first stream
 Every connection starts with `event: snapshot` (the execution as persisted in MongoDB), followed by live events. A finished execution gets only the snapshot, then the stream closes.
 - The runner persists each change **before** it publishes it (`executions/executionRunner.js`). So the snapshot is never behind what the stream already showed.
-- The stream **subscribes before** it reads the snapshot and buffers events until the snapshot is sent (`controllers/streamController.js`). An event can therefore show up in both the snapshot and the stream, but never in neither. Applying a node record twice gives the same state, so duplicates are harmless. A test injects an event during the snapshot read to prove nothing is lost.
+- The stream **subscribes before** it reads the snapshot and buffers events until the snapshot is sent (`controllers/streamController.js`). An event can therefore show up in both the snapshot and the stream, but never in neither. A repeat can even be *older* than the snapshot (a `node.started` arriving after a snapshot that already says `success`), so the client reducer (`frontend/src/lib/executionState.js`) only moves a node's status forward (idle, then running, then a final status; a retry with more attempts also counts as forward). That makes repeats harmless. A test injects an event during the snapshot read to prove nothing is lost.
 - Reconnecting is "open the stream again": no `Last-Event-ID`, no replay buffer on the server, no state that grows with the number of viewers.
 
 ## Client parsing library

@@ -10,17 +10,19 @@ api.interceptors.request.use((config)=>{
     return config;
 });
 
+// A 401 with a stored token means the token expired or the user is gone: drop it and tell
+// AuthContext to log out. Shared by Axios (below) and the fetch-based SSE reader (executionStream.js).
+export function handleUnauthorized(){
+    if(!localStorage.getItem(TOKEN_KEY)) return;
+    localStorage.removeItem(TOKEN_KEY);
+    window.dispatchEvent(new Event("auth:logout"));
+}
+
 api.interceptors.response.use(
     (res)=> res,
     (err)=>{
-        const hadToken = !!localStorage.getItem(TOKEN_KEY);
-        if(err.response?.status === 401 && hadToken){
-            localStorage.removeItem(TOKEN_KEY);
-            window.dispatchEvent(new Event("auth:logout"));
-
-        }
+        if(err.response?.status === 401) handleUnauthorized();
         return Promise.reject(err);
-
     }
 );
 

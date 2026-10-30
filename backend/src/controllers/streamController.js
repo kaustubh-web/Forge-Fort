@@ -25,8 +25,9 @@ export async function streamExecution(req, res) {
     // 1. Subscribe FIRST and hold events in a buffer, 2. then read the snapshot.
     // The other order loses events: anything the runner saved and published after our read
     // but before we subscribed would be in neither the snapshot nor the stream. This way every
-    // event is either already in the snapshot or arrives in the buffer. Some may be in both;
-    // that is harmless, because applying the same node record twice gives the same state.
+    // event is either already in the snapshot or arrives in the buffer. Some may be in both, and
+    // an older copy can arrive after a newer snapshot; the client only moves a node's status
+    // forward (frontend/src/lib/executionState.js), so repeats are harmless.
     // (Subscribing before the ownership check is safe: nothing is sent until it passes.)
     let buffer = [];
     let deliver = (event) => buffer.push(event);
