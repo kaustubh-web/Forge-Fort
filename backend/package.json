@@ -10,7 +10,8 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test": "vitest run",
-    "engine:run": "node scripts/run-workflow.js"
+    "engine:run": "node scripts/run-workflow.js",
+    "seed": "node scripts/seed.js"
   },
   "dependencies": {
     "@google/genai": "^2.32.0",
