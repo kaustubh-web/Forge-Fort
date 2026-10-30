@@ -70,14 +70,19 @@ const MODES = {
 };
 
 export function createAiTextHandler(getProvider) {
-    return async function execute({ config, signal, log }) {
+    return async function execute({ config, signal, log, node }) {
         const mode = MODES[config.mode];
         const provider = getProvider(); // throws "not configured" if AI_PROVIDER is unset
         const model = config.model?.trim() || provider.defaultModel;
         if (!model) throw new NodeError("No AI model: set AI_MODEL in backend/.env or the node's Model field");
 
         let text = toText(config.input);
-        if (isBlank(text)) throw new NodeError("Input is empty");
+        if (isBlank(text)) {
+            // Usually an expression that found nothing (wrong field, or the run input is missing a
+            // key), so name the expression: "Input is empty" alone does not say where to look.
+            const raw = node?.data?.config?.input;
+            throw new NodeError(raw ? `Input is empty: ${raw} resolved to nothing` : "Input is empty");
+        }
         if (text.length > MAX_INPUT_CHARS) {
             text = text.slice(0, MAX_INPUT_CHARS);
             log(`Input cut to the first ${MAX_INPUT_CHARS} characters`);

@@ -121,6 +121,13 @@ describe("aiText: setup errors", () => {
     it("fails when the input resolves to nothing", async () => {
         expect((await rejection(run(fakeProvider("x"), { mode: "summarize", input: "" }))).message).toBe("Input is empty");
     });
+
+    it("names the expression that resolved to nothing", async () => {
+        const execute = createAiTextHandler(() => fakeProvider("x"));
+        const node = { data: { config: { input: "{{nodes.http-1.output.body.body}}" } } };
+        const error = await rejection(execute({ config: { mode: "summarize", input: "" }, node, signal: new AbortController().signal, log: () => {} }));
+        expect(error.message).toBe("Input is empty: {{nodes.http-1.output.body.body}} resolved to nothing");
+    });
     it("checkConfig rejects an extract schema that is not JSON or uses unsupported keywords", () => {
         expect(aiText.checkConfig({ mode: "extract", jsonSchema: "{bad" })[0]).toContain("not valid JSON");
         expect(aiText.checkConfig({ mode: "extract", jsonSchema: '{"type":"object","$ref":"#"}' })).toEqual([
