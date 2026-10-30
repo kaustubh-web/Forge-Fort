@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Play, Save, Square } from "lucide-react";
 import { toast } from "sonner";
@@ -16,6 +16,7 @@ import ConfigPanel from "@/components/editor/ConfigPanel";
 import ValidationPanel from "@/components/editor/ValidationPanel";
 import { cn } from "@/lib/utils";
 import { useExecution } from "@/hooks/useExecution";
+import { nodeStatuses, executedEdgeIds } from "@/lib/executionState";
 import RunDialog from "@/components/editor/RunDialog";
 
 // Execution status -> badge dot colour and label (design tokens, see index.css).
@@ -84,6 +85,21 @@ function EditorInner({ workflow }) {
   const { execution, connection, error: streamError, start, stop, load } = useExecution();
   const [runOpen, setRunOpen] = useState(false);
   const running = execution?.status === "running";
+
+  // Run status is display-only: build copies for the canvas instead of changing `nodes`,
+  // so a run never marks the workflow dirty or ends up in the saved JSON.
+  const displayNodes = useMemo(() => {
+    const statuses = nodeStatuses(execution);
+    return nodes.map((n) => (statuses[n.id] ? { ...n, data: { ...n.data, status: statuses[n.id] } } : n));
+  }, [nodes, execution]);
+
+  // Edges the run actually travelled are animated and green (only the taken Condition branch).
+  const displayEdges = useMemo(() => {
+    const executed = executedEdgeIds(execution, edges);
+    return edges.map((e) =>
+      executed.has(e.id) ? { ...e, animated: true, style: { stroke: "var(--status-success)", strokeWidth: 2 } } : e
+    );
+  }, [edges, execution]);
 
   // Dirty tracking: turn the canvas into the exact JSON we would save, as a string.
   // savedSnapshot is what the server has. If they differ, there are unsaved changes.
@@ -248,8 +264,8 @@ function EditorInner({ workflow }) {
         <NodePalette hasTrigger={hasTrigger} />
         <div className="relative min-w-0 flex-1">
           <FlowCanvas
-            nodes={nodes}
-            edges={edges}
+            nodes={displayNodes}
+            edges={displayEdges}
             setNodes={setNodes}
             setEdges={setEdges}
             onNodesChange={onNodesChange}
