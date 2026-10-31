@@ -6,6 +6,8 @@ const schema = z.object({
   MONGODB_URI: z.string().min(1),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   JWT_EXPIRES_IN: z.string().default("7d"),
+  // Encrypts user secrets at rest (utils/secretBox.js). Exactly 32 random bytes as 64 hex chars.
+  SECRETS_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, "SECRETS_KEY must be 64 hex characters (32 random bytes)"),
   CORS_ORIGIN: z.string().url(),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(20),
