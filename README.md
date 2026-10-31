@@ -2,7 +2,7 @@
 
 A visual workflow builder (React Flow) with a custom Node.js execution engine. Users connect nodes on a canvas, run workflows on the backend, and inspect persisted results.
 
-> Status: Phases 1-3 complete (auth, editor, execution engine). HTTP/AI nodes, the execute API and live updates arrive in Phases 4-6. See `docs/SPEC.md` for scope and `docs/ARCHITECTURE.md` for how execution works.
+> Status: Phases 1-5 complete (auth, editor, engine, HTTP/AI nodes, runs from the app with live updates and history). Phase 6 (hardening, deployment) is next. See `docs/SPEC.md` for scope and `docs/ARCHITECTURE.md` for how execution works.
 
 ## Structure
 - `backend/` Express + MongoDB (Mongoose) API
@@ -29,6 +29,21 @@ npm run dev              # http://localhost:5173 (the port must match CORS_ORIGI
 ```
 Generate a secret: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
 
+Load the three example workflows into your account (register in the app first):
+```bash
+cd backend
+npm run seed -- you@example.com     # re-running updates them, never duplicates
+```
+
+## Example workflows
+| Workflow | Run input | Needs |
+|---|---|---|
+| 1. Summarize text (Trigger -> AI -> Output) | `{"text": "a paragraph"}` | an AI key |
+| 2. Todo status check (Trigger -> HTTP -> Condition -> Transform / Output -> Output) | `{"todoId": 1}` (false branch) or `{"todoId": 4}` (true branch) | internet |
+| 3. Classify an API post (Trigger -> HTTP -> AI classify -> Output) | `{"postId": 3}` | internet and an AI key |
+
+Open one, click **Run**, paste the input, and watch the nodes colour in. The log panel at the bottom shows each node's input, output, timing and skip reason; **History** lists past runs.
+
 ## Environment variables (backend)
 | Variable | Purpose | Default |
 |---|---|---|
@@ -51,7 +66,7 @@ Generate a secret: `node -e "console.log(require('crypto').randomBytes(48).toStr
 
 The server validates these at startup and refuses to boot if any are missing or invalid.
 
-## API (Phases 1-2)
+## API
 All responses use `{ success: true, data }` or `{ success: false, error: { code, message, details } }`.
 
 | Method | Path | Auth | Description |
@@ -75,17 +90,37 @@ All workflow routes need a Bearer token and only ever touch the caller's own wor
 | DELETE | `/api/workflows/:id` | Deletes it. |
 | POST | `/api/workflows/:id/duplicate` | Creates `<name> (copy)`. 201. |
 
+### Executions
+All routes need a Bearer token; another user's execution or workflow returns 404.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/workflows/:id/execute` | Body `{ input }` (a JSON object, max 100 KB, optional). Runs the **saved** workflow. 202 `{ executionId, status: "running" }`; the engine runs in the background. 400 `INVALID_WORKFLOW` (with every problem in `details`) if the graph cannot run; nothing is created then. |
+| GET | `/api/workflows/:id/executions` | The last 50 runs, newest first (summaries: status, input, error, timings). |
+| GET | `/api/executions/:id` | The full persisted execution: one record per node in run order (status, input, output, attempts, attemptLog, error, skipReason, branch, timings), plus `outputs` and `logs`. |
+| GET | `/api/executions/:id/stream` | Server-Sent Events, see below. |
+| POST | `/api/executions/:id/cancel` | 202: the engine was asked to stop; the stream reports `workflow.cancelled`. 409 `NOT_RUNNING` if it already finished. |
+
+**Live updates (SSE).** The stream always starts with `event: snapshot` (the execution as saved in MongoDB), then live events: `workflow.started`, `node.started`, `node.completed`, `node.failed`, `node.skipped`, then one of `workflow.completed` / `workflow.failed` / `workflow.cancelled`, after which it closes. A finished run gets only the snapshot. Node events carry the (redacted) node record. A `: ping` comment every 15 s keeps proxies from closing it. Because the native `EventSource` cannot send an `Authorization` header, the frontend reads the stream with `fetch` (`docs/decisions/sse-auth.md`). Try it:
+```bash
+curl -N -H "Authorization: Bearer $TOKEN" http://localhost:4000/api/executions/<executionId>/stream
+```
+
 The workflow JSON (SPEC section 3) is validated with Zod in `backend/src/schema/workflow.js`: node types, the config schema for each type (`backend/src/nodes/registry.js`), unique node ids (letters, digits, `-`, `_` only), edges that reference real nodes, `true`/`false` handles only on Condition nodes (and required there), no self-loops, no duplicate edges, at most 50 nodes and 100 edges. Unknown fields are stripped. Drafts may be incomplete: required-config and "exactly one trigger" checks happen at run time.
 
 ## Editor (frontend)
 - Dashboard: list, create, duplicate and delete workflows.
 - Editor at `/workflows/:id`: drag nodes from the palette, connect them, configure the selected node in the right panel. Condition nodes have labelled `true` and `false` outputs.
-- Shortcuts: Ctrl+S save, Delete removes the selected node, Ctrl+D duplicates it.
+- Shortcuts: Ctrl+S save, Ctrl+Enter run, Delete removes the selected node, Ctrl+D duplicates it.
 - A validation panel lists problems before a run (no trigger, cycles, unconnected nodes, missing config). Clicking a problem selects the node.
-- Run and Stop are disabled until the execution engine exists (Phases 3-5).
+- **Run** opens a dialog for the trigger input (JSON). Unsaved changes are saved first, because the server runs the saved workflow. **Stop** cancels the run. The header badge shows the run status.
+- While a run is going, node dots turn blue (pulsing), then green, red or dimmed (skipped), and the edges the run travelled are animated. Only the Condition branch that was taken lights up.
+- The **execution log** (bottom, collapsible) lists nodes in run order with status, duration, retry attempts and skip reasons; expand a row for its input and output JSON with a copy button.
+- **History** lists the last 50 runs of the workflow. Click one to open it, or **Rerun** it with the same input.
+- The URL carries the run (`/workflows/:id?run=<executionId>`), so a refresh reloads it from MongoDB and reconnects if it is still running. A dropped stream reconnects after 1, 2, 5 and 10 s.
 
 ## Execution engine (Phase 3)
-The engine lives in `backend/src/engine/`. It runs in-process and sequentially. There is no API route yet (Phase 5 adds `POST /api/workflows/:id/execute`), so try it with the CLI runner:
+The engine lives in `backend/src/engine/`. It runs in-process and sequentially. The app runs it through `POST /api/workflows/:id/execute` (see "Running from the app" below); the CLI runner runs a JSON file directly, without the database:
 ```bash
 cd backend
 npm run engine:run -- examples/diamond.json                                # true branch
@@ -107,9 +142,16 @@ Press Ctrl+C during a run to cancel it: the engine aborts the running call, skip
    - Stop mid-node: that node is `failed` ("Cancelled"), the rest `skipped` ("execution cancelled"), execution `cancelled`. Deadline: execution `failed`, rest skipped ("workflow timed out").
 4. Edge states: success makes outgoing edges `active`. A Condition activates only its chosen handle. Skipped and failed nodes make outgoing edges `inactive`.
 5. On a failure: the node is `failed`, every remaining node is `skipped` ("upstream failed"), the execution is `failed`, and partial results are kept.
-6. Every state change is emitted as a SPEC event (`node.started`, `node.skipped`, ...). Phase 5 persists and streams these.
+6. Every state change is emitted as a SPEC event (`node.started`, `node.skipped`, ...) and awaited, so the engine waits until it is saved.
 
-**Expressions**: `{{nodes.<id>.output.<path>}}`, `{{input.<path>}}` (trigger input), and `{{item.<path>}}` (Transform map only). A whole-string expression keeps its type; embedded ones become text. A missing field is empty, but a reference to a node that did not run is an error. The resolver only walks own properties and rejects `__proto__`/`prototype`/`constructor`. There is no eval (`docs/decisions/expressions.md`).
+**Running from the app** (Phase 5): route -> `executionController.execute` -> `executionService.executeWorkflow` (ownership, `validateForRun`, insert a `WorkflowExecution` with status `running` and one `idle` record per node in run order) -> 202 -> `executionRunner.startExecution` (in the background) -> `runWorkflow`. For every event the runner's `emit`:
+1. redacts it (`redactDeep`),
+2. saves it (`$set` of that node's record and the execution status),
+3. then publishes it to the in-memory hub (`executions/executionHub.js`), which writes it to every open SSE stream.
+
+Saving before publishing means a refresh never shows less than the stream did. The final `workflow.*` event is held back until `outputs`, `logs` and `endedAt` are saved. Stop goes through an in-memory `Map<executionId, AbortController>` (`executions/runningExecutions.js`). If the engine crashes unexpectedly, the runner marks the execution `failed` and publishes that; it is never swallowed. On boot, any execution still `running` is marked `failed` ("server restarted"), because its engine died with the old process.
+
+**Expressions**: `{{nodes.<id>.output.<path>}}`, `{{input.<path>}}` (trigger input), and `{{item.<path>}}` (Transform map only). A whole-string expression keeps its type; embedded ones become text. A missing field is empty, but a reference to a node that did not run is an error. One exception: in the HTTP node's URL an empty expression fails the node before any request ("URL expression {{input.postId}} is empty. Check the Run input"), because `/posts/{{input.postId}}` would otherwise quietly fetch `/posts/`. The resolver only walks own properties and rejects `__proto__`/`prototype`/`constructor`. There is no eval (`docs/decisions/expressions.md`).
 
 **Nodes** (`backend/src/nodes/`, one file each, registered in `registry.js`)
 | Type | Runs? | Output |
@@ -130,10 +172,10 @@ A node's input is the output of its first active parent. Any other earlier node 
 ## Tests
 ```bash
 cd backend && npm test     # API + engine tests, in-memory MongoDB
-cd frontend && npm test    # graph validation and conversion helpers
+cd frontend && npm test    # helpers: graph validation and conversion, execution state reducer, SSE reader
 cd frontend && npm run build
 ```
-The backend tests use an in-memory MongoDB, so they never touch your real database. React components do not have automated tests yet.
+The backend tests use an in-memory MongoDB, so they never touch your real database. React components do not have automated tests yet; their logic lives in tested helpers in `frontend/src/lib/`.
 
 ## Security notes (so far)
 - Passwords hashed with bcrypt (12 rounds); the hash is never returned by the API.
@@ -141,12 +183,17 @@ The backend tests use an in-memory MongoDB, so they never touch your real databa
 - helmet, CORS limited to one origin, JSON body size limit, rate limit on auth routes.
 - Secrets live only in `.env` files, which are gitignored. AI keys are read only by `backend/src/ai/` and never logged.
 - HTTP node SSRF protection (see "HTTP Request and SSRF" above); sensitive response headers are redacted in node outputs.
+- Stored executions are redacted (`redactDeep` in `backend/src/utils/redact.js`): any field whose key looks like a secret (`authorization`, `apiKey`, `token`, `password`, ...) is replaced with `[REDACTED]` in the stored input, node inputs, outputs, errors and stream events. The engine itself gets the real input, in memory only.
 - No eval anywhere: expressions are path lookups and the AI extract schema is checked by walking it as data.
 
 ## Limitations
 - The auth token is stored in `localStorage` (see `docs/decisions/auth-storage.md`).
-- The engine runs only through the CLI runner and tests until the execute route (Phase 5). The Run button is still disabled.
-- Execution is in-process and sequential: no parallel branches, single server instance.
+- Execution is in-process and sequential: no parallel branches, single server instance. The SSE hub and the cancel map live in process memory, so a viewer or a Stop must reach the server that runs the execution.
+- A server restart (including `npm run dev` reloading after a backend file is saved) kills running executions; they are marked `failed` ("server restarted") on the next boot.
+- Redaction is by key name. A secret under an innocent name is not caught, and a harmless field such as `tokenCount` is hidden.
+- Rerun uses the stored, redacted input, so a field like `apiKey` is sent as `"[REDACTED]"`.
+- Node events carry the full node record, so a large HTTP response (up to 1 MB) is sent to the browser in full.
+- History shows this workflow's last 50 runs; there is no global executions page yet. The log panel is collapsible but not resizable.
 - HTTP node: any port on a public host is reachable; an HTTP status >= 400 fails the node (a Condition cannot branch on a 404); a JSON body built from expressions breaks if a value contains quotes (use a whole-body expression instead).
 - Header values typed into a workflow (for example an `Authorization` header) are stored in the workflow as written until the Phase 6 secrets pass.
 - Aborting an AI call stops the wait, but the provider may still bill for work already done.

@@ -78,7 +78,7 @@ Build explainability into the product itself:
 
 ## Commands
 (Keep updated as scripts are added.)
-- Backend (from `backend/`): `npm run dev` (watch mode) or `npm start`, serves on port 4000. Needs `backend/.env` (copy `.env.example`).
+- Backend (from `backend/`): `npm run dev` (watch mode) or `npm start`, serves on port 4000. Needs `backend/.env` (copy `.env.example`). Watch mode restarts on every backend save, which marks running executions `failed` ("server restarted").
 - Frontend (from `frontend/`): `npm run dev` (port 5173, strict), `npm run build`, `npm test` (Vitest, helper modules only). Needs `frontend/.env`.
 - Tests (from `backend/`): `npm test` (Vitest + supertest + mongodb-memory-server; no real DB needed).
 - Run a workflow file through the engine (from `backend/`): `npm run engine:run -- examples/diamond.json [input.json | 'json']`. Set `DEBUG_ENGINE=true` for engine debug logs. Ctrl+C cancels the run. Examples: `diamond`, `pipeline` (offline), `http-condition` (internet), `ai-summarize`, `http-ai` (need `AI_PROVIDER`, its key and `AI_MODEL`).
