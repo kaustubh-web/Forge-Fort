@@ -68,14 +68,14 @@ describe("validateForRun", () => {
                 trigger(),
                 output("first", "{{nodes.second.output.message}}"),
                 output("second", "{{nodes.ghost.output.x}}"),
-                output("bad", "{{secrets.key}}"),
+                output("bad", "{{env.key}}"),
             ],
             [edge("trigger", "first"), edge("first", "second"), edge("trigger", "bad")]
         );
         expect(issues(wf)).toEqual([
             'Node "first" refers to "second", which does not run before it',
             'Node "second" refers to unknown node "ghost"',
-            'Node "bad": Expression "{{secrets.key}}" must start with nodes, input or item',
+            'Node "bad": Expression "{{env.key}}" must start with nodes, input, item or secrets',
         ]);
     });
 });

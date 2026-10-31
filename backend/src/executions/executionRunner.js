@@ -1,6 +1,6 @@
 import { runWorkflow } from "../engine/runWorkflow.js";
 import { WorkflowExecution } from "../models/WorkflowExecution.js";
-import { redactDeep } from "../utils/redact.js";
+import { redactDeep, createValueRedactor } from "../utils/redact.js";
 import * as runningExecutions from "./runningExecutions.js";
 import * as hub from "./executionHub.js";
 
@@ -21,23 +21,30 @@ import * as hub from "./executionHub.js";
 // `execution` is the saved WorkflowExecution, `workflow` a plain workflow object (the service
 // passes workflow.toObject()). `input` is the REAL run input: the stored execution.input is
 // redacted, but a node may need the secret (for example {{input.apiKey}} in a header).
+// `secrets` holds the decrypted {{secrets.NAME}} values this workflow uses (memory only).
 // Returns a promise that never rejects: the API does not await it, tests do.
-export function startExecution({ execution, workflow, input, limits }) {
+export function startExecution({ execution, workflow, input, secrets = {}, limits }) {
     const executionId = String(execution._id);
     const signal = runningExecutions.register(executionId);
-    return run({ execution, workflow, input, limits, executionId, signal }).finally(() =>
+    return run({ execution, workflow, input, secrets, limits, executionId, signal }).finally(() =>
         runningExecutions.unregister(executionId)
     );
 }
 
-async function run({ execution, workflow, input, limits, executionId, signal }) {
+async function run({ execution, workflow, input, secrets, limits, executionId, signal }) {
+    // Two layers before anything is stored or streamed: key names that look like credentials
+    // (redactDeep), then this run's actual secret values wherever they appear (an API echoing
+    // the token back, an error message quoting the URL).
+    const hideSecrets = createValueRedactor(Object.values(secrets));
+    const redact = (value) => hideSecrets(redactDeep(value));
+
     // The service stored one record per node in topological order. The engine sends node ids,
     // MongoDB updates array items by position, so map one to the other.
     const indexOf = new Map(execution.nodes.map((record, i) => [record.nodeId, i]));
     let finalEvent = null;
 
     async function emit(event) {
-        const safe = redactDeep(event);
+        const safe = redact(event);
 
         // The final workflow.* event is held back until outputs and logs are saved (below), so
         // a client that refetches when it sees "completed" gets the complete record.
@@ -57,6 +64,7 @@ async function run({ execution, workflow, input, limits, executionId, signal }) 
         const result = await runWorkflow({
             workflow,
             input,
+            secrets,
             executionId,
             workflowId: String(execution.workflow),
             signal,
@@ -68,9 +76,9 @@ async function run({ execution, workflow, input, limits, executionId, signal }) 
             {
                 $set: {
                     status: result.status,
-                    error: result.error,
-                    outputs: redactDeep(result.outputs),
-                    logs: redactDeep(result.logs),
+                    error: redact(result.error),
+                    outputs: redact(result.outputs),
+                    logs: redact(result.logs),
                     endedAt: result.endedAt,
                     durationMs: result.durationMs,
                 },
@@ -82,7 +90,7 @@ async function run({ execution, workflow, input, limits, executionId, signal }) 
         // database error while persisting, or a graph that no longer validates. Never swallow
         // it: log the stack, store it on the execution, and tell the viewers.
         console.error(`[runner] execution ${executionId} crashed:`, error);
-        await failExecution(executionId, execution.startedAt, error);
+        await failExecution(executionId, execution.startedAt, { message: hideSecrets(error.message) });
     }
 }
 

@@ -8,7 +8,8 @@ import { findExpressions } from "./expressions.js";
 // Saving is lenient (drafts may be unfinished). Running is strict. On any problem we throw
 // 400 INVALID_WORKFLOW with the full list of issues, and nothing runs.
 //
-// Returns { workflow, graph, order } so the engine does not repeat the work.
+// Returns { workflow, graph, order, secretNames } so the engine does not repeat the work.
+// secretNames: every {{secrets.NAME}} the workflow uses; the service loads exactly those.
 export function validateForRun(rawWorkflow) {
     // 1. Shape. The stored workflow was validated when saved, but it is parsed again: the data
     //    could predate a schema change, and the engine must never trust its input.
@@ -22,6 +23,7 @@ export function validateForRun(rawWorkflow) {
 
     const issues = [];
     const add = (nodeId, message) => issues.push({ nodeId, message });
+    const secretNames = new Set();
 
     // 2. Exactly one trigger, and nothing flows into it.
     const triggers = workflow.nodes.filter((node) => node.type === "manualTrigger");
@@ -63,6 +65,11 @@ export function validateForRun(rawWorkflow) {
         for (const expression of findExpressions(config)) {
             if (expression.error) {
                 add(node.id, `Node "${node.id}": ${expression.error}`);
+            } else if (expression.root === "secrets" && node.type !== "httpRequest") {
+                // A secret anywhere else would end up in stored outputs, logs or an AI prompt.
+                add(node.id, `Node "${node.id}": {{secrets...}} can only be used in HTTP Request nodes`);
+            } else if (expression.root === "secrets") {
+                secretNames.add(expression.name);
             } else if (expression.root === "item" && node.type !== "transform") {
                 add(node.id, `Node "${node.id}": {{item...}} only works inside a Transform map operation`);
             } else if (expression.root === "nodes" && !graph.nodeById.has(expression.nodeId)) {
@@ -74,5 +81,5 @@ export function validateForRun(rawWorkflow) {
     }
 
     if (issues.length) throw new AppError(400, "INVALID_WORKFLOW", "Workflow cannot run", issues);
-    return { workflow, graph, order };
+    return { workflow, graph, order, secretNames: [...secretNames] };
 }

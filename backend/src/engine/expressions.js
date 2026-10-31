@@ -1,4 +1,5 @@
 import { NodeError } from "./errors.js";
+import { SECRET_NAME } from "../schema/secret.js";
 
 // Safe expression resolver (decision note: docs/decisions/expressions.md).
 //
@@ -6,6 +7,7 @@ import { NodeError } from "./errors.js";
 //   {{nodes.http-1.output.body.title}}   output of an earlier node
 //   {{input.email}}                      the trigger input from the Run dialog
 //   {{item.name}}                        the current array item (Transform "map" only)
+//   {{secrets.GITHUB_TOKEN}}             a saved secret (HTTP Request nodes only, see validateForRun)
 // The text inside the braces is only ever split on dots and walked as a path.
 // It is never evaluated: no eval, no Function, no vm.
 
@@ -15,7 +17,7 @@ import { NodeError } from "./errors.js";
 const EXPRESSION = /\{\{([^{}]*)\}\}/g;
 const WHOLE_EXPRESSION = /^\{\{([^{}]*)\}\}$/;
 
-const ROOTS = ["nodes", "input", "item"];
+const ROOTS = ["nodes", "input", "item", "secrets"];
 
 // These keys lead to an object's prototype. Reading through them could expose or (in other
 // code) modify built-in objects, so they are rejected anywhere in a path.
@@ -33,7 +35,15 @@ export function parsePath(rawPath) {
 
     const [root, ...rest] = parts;
     if (!ROOTS.includes(root)) {
-        return { error: `Expression "{{${path}}}" must start with nodes, input or item` };
+        return { error: `Expression "{{${path}}}" must start with nodes, input, item or secrets` };
+    }
+    if (root === "secrets") {
+        // Exactly one name, no path into it: a secret is a single string.
+        const [name, ...more] = rest;
+        if (!name || more.length || !SECRET_NAME.test(name)) {
+            return { error: `Expression "{{${path}}}" must look like {{secrets.NAME}} (A-Z, 0-9, _)` };
+        }
+        return { root, name, keys: [] };
     }
     if (root !== "nodes") return { root, keys: rest };
 
@@ -81,6 +91,13 @@ function resolvePath(rawPath, scope) {
 
     if (parsed.root === "input") return walk(scope.input, parsed.keys);
     if (parsed.root === "item") return "item" in scope ? walk(scope.item, parsed.keys) : KEEP;
+    if (parsed.root === "secrets") {
+        // Loaded and decrypted by the service before the run. Missing here means a run that
+        // did not go through the API (CLI runner) or a bug: fail loudly, never send "".
+        const secrets = scope.secrets ?? {};
+        if (!Object.hasOwn(secrets, parsed.name)) throw new NodeError(`Secret ${parsed.name} is not available in this run`);
+        return secrets[parsed.name];
+    }
 
     // Referencing a node that does not exist or did not succeed is a configuration bug,
     // so it fails loudly instead of quietly turning into an empty value.

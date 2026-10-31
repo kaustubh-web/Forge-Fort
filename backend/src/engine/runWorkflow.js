@@ -30,6 +30,7 @@ const NO_RETRY = { maxAttempts: 1, backoffMs: 0 };
 export async function runWorkflow({
     workflow: rawWorkflow,
     input = {},
+    secrets = {}, // decrypted {{secrets.NAME}} values, only for HTTP nodes (validateForRun)
     executionId = randomUUID(),
     workflowId = null,
     signal,
@@ -55,6 +56,7 @@ export async function runWorkflow({
         executionId,
         workflowId,
         input,
+        secrets, // never emitted or returned: only read through expressions
         status: "running",
         error: null,
         nodes: {}, // nodeId -> { status, output, error }
@@ -266,7 +268,7 @@ async function executeNode(node, record, context, { runSignal, stopError, nodeTi
 
     // Expressions are resolved at run time, against the outputs that exist right now.
     // The stored config is never modified. Resolved once: every attempt sends the same request.
-    const scope = { nodes: context.nodes, input: context.input };
+    const scope = { nodes: context.nodes, input: context.input, secrets: context.secrets };
     const config = resolveConfig(node.data.config, scope);
 
     // Policy: the node's own config wins, then the type's default (HTTP/AI retry), then run once.

@@ -7,6 +7,7 @@ import * as runningExecutions from "../executions/runningExecutions.js";
 import { redactDeep } from "../utils/redact.js";
 import { AppError } from "../utils/AppError.js";
 import {env} from "../config/env.js";
+import { loadSecrets } from "./secretService.js";
 
 const notFound = () => new AppError(404,"NOT_FOUND","Execution not found");
 
@@ -25,7 +26,17 @@ async function findOwned(ownerId, id){
 export async function executeWorkflow(ownerId, workflowId, input){
     const workflow = await getWorkflow(ownerId, workflowId);
     const plain = workflow.toObject();
-    const {order, graph} = validateForRun(plain);
+    const {order, graph, secretNames} = validateForRun(plain);
+
+    // Decrypt only the secrets this workflow uses. A missing one is a 400 before anything runs,
+    // like any other invalid graph. The plaintext goes to the engine in memory, never to the DB.
+    const { values: secrets, missing } = await loadSecrets(ownerId, secretNames);
+    if (missing.length) {
+        throw new AppError(400, "INVALID_WORKFLOW", "Workflow cannot run", missing.map((name) => ({
+            nodeId: null,
+            message: `Secret ${name} does not exist. Add it under Settings > Secrets`,
+        })));
+    }
 
     // Each run holds outbound HTTP/AI calls for up to WORKFLOW_TIMEOUT_MS, so cap how many one
     // user can have going at once. Checked after validation (a bad graph still gets its 400)
@@ -52,7 +63,7 @@ export async function executeWorkflow(ownerId, workflowId, input){
         metadata: {workflowName: workflow.name},
     });
 
-    startExecution ({execution,workflow: plain, input});
+    startExecution ({execution,workflow: plain, input, secrets});
     return execution;
 }
 
