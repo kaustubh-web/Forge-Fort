@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { Play, Save, Square } from "lucide-react";
+import { History, Play, Save, Square } from "lucide-react";
 import { toast } from "sonner";
 import { ReactFlowProvider, useNodesState, useEdgesState } from "@xyflow/react";
 import { getWorkflow, updateWorkflow } from "@/lib/workflowApi";
@@ -19,6 +19,7 @@ import { useExecution } from "@/hooks/useExecution";
 import { nodeStatuses, executedEdgeIds } from "@/lib/executionState";
 import RunDialog from "@/components/editor/RunDialog";
 import ExecutionLogPanel from "@/components/editor/ExecutionLogPanel";
+import RunHistoryDialog from "@/components/editor/RunHistoryDialog";
 
 // Execution status -> badge dot colour and label (design tokens, see index.css).
 const RUN_STATUS = {
@@ -85,6 +86,7 @@ function EditorInner({ workflow }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const { execution, connection, error: streamError, start, stop, load } = useExecution();
   const [runOpen, setRunOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const running = execution?.status === "running";
 
   // Run status is display-only: build copies for the canvas instead of changing `nodes`,
@@ -167,6 +169,13 @@ function EditorInner({ workflow }) {
     }
   }
 
+  // Show a past run: the same path as a refresh with ?run= in the URL.
+  function openRun(executionId) {
+    setSearchParams({ run: executionId }, { replace: true });
+    load(executionId);
+    setHistoryOpen(false);
+  }
+
   // After a refresh (or opening a shared link), pick up the run named in the URL.
   // Runs once on mount: later ?run= changes come from runWorkflow, which already connected.
   useEffect(() => {
@@ -241,6 +250,9 @@ function EditorInner({ workflow }) {
           <span className="text-xs text-muted-foreground">
             {saving ? "Saving..." : dirty ? "Unsaved changes" : "Saved"}
           </span>
+          <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+            <History /> History
+          </Button>
           {/* Disabled buttons do not show tooltips, so the title goes on a wrapping span. */}
           <span title={hasTrigger ? "Run (Ctrl+Enter)" : "Add a Manual Trigger first"}>
             <Button
@@ -280,6 +292,17 @@ function EditorInner({ workflow }) {
 
       {runOpen && (
         <RunDialog initialInput={execution?.input} onRun={runWorkflow} onClose={() => setRunOpen(false)} />
+      )}
+
+      {historyOpen && (
+        <RunHistoryDialog
+          workflowId={workflow._id}
+          currentId={execution?.executionId}
+          running={running}
+          onOpenRun={openRun}
+          onRerun={runWorkflow}
+          onClose={() => setHistoryOpen(false)}
+        />
       )}
     </div>
   );
