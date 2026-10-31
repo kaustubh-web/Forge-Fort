@@ -2,11 +2,11 @@ import { NavLink, Outlet } from "react-router-dom";
 import { Workflow, History, Settings, LogOut } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
-// Executions and Settings arrive in later phases, so they are shown but disabled.
+// Executions arrives in a later phase, so it is shown but disabled.
 const items = [
   { to: "/", label: "Workflows", icon: Workflow, enabled: true },
   { label: "Executions", icon: History, enabled: false },
-  { label: "Settings", icon: Settings, enabled: false },
+  { to: "/settings", label: "Settings", icon: Settings, enabled: true },
 ];
 
 export default function AppShell() {

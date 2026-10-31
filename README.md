@@ -18,7 +18,7 @@ A visual workflow builder (React Flow) with a custom Node.js execution engine. U
 # Backend
 cd backend
 npm install
-cp .env.example .env     # then edit: set MONGODB_URI and a JWT_SECRET of 32+ characters
+cp .env.example .env     # then edit: set MONGODB_URI, a JWT_SECRET of 32+ characters and SECRETS_KEY
 npm run dev              # http://localhost:4000
 
 # Frontend (second terminal)
@@ -51,6 +51,7 @@ Open one, click **Run**, paste the input, and watch the nodes colour in. The log
 | `MONGODB_URI` | MongoDB connection string | required |
 | `JWT_SECRET` | Token signing key, min 32 chars | required |
 | `JWT_EXPIRES_IN` | Token lifetime | 7d |
+| `SECRETS_KEY` | Encrypts saved secrets: 64 hex characters (32 random bytes). Losing it makes saved secrets unreadable | required |
 | `CORS_ORIGIN` | Allowed frontend origin | required |
 | `AUTH_RATE_LIMIT` | Auth requests per IP per 15 min | 20 |
 | `API_RATE_LIMIT` | Requests per IP per 15 min, all `/api` routes except `/api/health` | 600 |
@@ -94,6 +95,22 @@ All workflow routes need a Bearer token and only ever touch the caller's own wor
 | DELETE | `/api/workflows/:id` | Deletes it. |
 | POST | `/api/workflows/:id/duplicate` | Creates `<name> (copy)`. 201. |
 
+### Secrets
+API keys and tokens for HTTP nodes, stored encrypted (AES-256-GCM, `docs/decisions/secrets.md`). All routes need a Bearer token and only touch the caller's secrets. **No route ever returns a value.**
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/secrets` | Names and dates only. |
+| POST | `/api/secrets` | `{ name, value }`. Name: `A-Z`, `0-9`, `_`, starting with a letter (max 64). Value up to 4096 chars. 201. 409 `SECRET_EXISTS`. At most 50 per user. |
+| PUT | `/api/secrets/:name` | `{ value }`: replaces the value (rotation). 404 if missing. |
+| DELETE | `/api/secrets/:name` | Deletes it. Workflows using it fail validation until it exists again. |
+
+Use a secret in an **HTTP Request** node's URL, headers, query or body as `{{secrets.NAME}}`, for example the header `Authorization: Bearer {{secrets.GITHUB_TOKEN}}`.
+- On execute, only the referenced secrets are decrypted, in memory. A missing one is a 400 before anything runs.
+- Any other node type using `{{secrets...}}` is rejected, because the value would land in stored outputs or an AI prompt.
+- Every stored and streamed piece of a run (node inputs, outputs, errors, logs) is scanned for the decrypted values, including their URL-encoded form, and they are replaced with `[REDACTED]`. An API that echoes the token back can't leak it.
+- Saving a workflow with a typed-in value in a sensitive header or query parameter (`Authorization`, `X-Api-Key`, `token`, ...) is refused with a message pointing to `{{secrets.NAME}}`. Expressions such as `Bearer {{input.token}}` are still allowed.
+
 ### Executions
 All routes need a Bearer token; another user's execution or workflow returns 404.
 
@@ -120,6 +137,7 @@ The workflow JSON (SPEC section 3) is validated with Zod in `backend/src/schema/
 - **Run** opens a dialog for the trigger input (JSON). Unsaved changes are saved first, because the server runs the saved workflow. **Stop** cancels the run. The header badge shows the run status.
 - While a run is going, node dots turn blue (pulsing), then green, red or dimmed (skipped), and the edges the run travelled are animated. Only the Condition branch that was taken lights up.
 - The **execution log** (bottom, collapsible) lists nodes in run order with status, duration, retry attempts and skip reasons; expand a row for its input and output JSON with a copy button.
+- **Settings** (sidebar) manages secrets: add, replace or delete them, and copy the `{{secrets.NAME}}` expression. A saved value is never shown again.
 - **History** lists the last 50 runs of the workflow. Click one to open it, or **Rerun** it with the same input.
 - The URL carries the run (`/workflows/:id?run=<executionId>`), so a refresh reloads it from MongoDB and reconnects if it is still running. A dropped stream reconnects after 1, 2, 5 and 10 s.
 
@@ -199,7 +217,8 @@ The backend tests use an in-memory MongoDB, so they never touch your real databa
 - Node events carry the full node record, so a large HTTP response (up to 1 MB) is sent to the browser in full.
 - History shows this workflow's last 50 runs; there is no global executions page yet. The log panel is collapsible but not resizable.
 - HTTP node: any port on a public host is reachable; an HTTP status >= 400 fails the node (a Condition cannot branch on a 404); a JSON body built from expressions breaks if a value contains quotes (use a whole-body expression instead).
-- Header values typed into a workflow (for example an `Authorization` header) are stored in the workflow as written until the Phase 6 secrets pass.
+- Secrets protect against a leaked database, not a compromised server: `SECRETS_KEY` lives next to the app. A KMS would be the next step. There is no key rotation yet (stored values carry a `v1` prefix for it).
+- Only sensitive header and query names are checked for typed-in credentials. A JSON body can't be checked reliably; use `{{secrets.NAME}}` there too. Secret values shorter than 4 characters are not masked by value.
 - Aborting an AI call stops the wait, but the provider may still bill for work already done.
 - The "unsaved changes" warning only covers closing or reloading the tab, not clicking a link inside the app.
 

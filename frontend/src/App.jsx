@@ -7,6 +7,7 @@ import Register from "@/pages/Register";
 import Dashboard from "@/pages/Dashboard";
 import { Toaster } from "@/components/ui/sonner";
 import Editor from "@/pages/Editor";
+import Settings from "@/pages/Settings";
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
             <Route element={<AppShell />}>
               <Route index element={<Dashboard />} />
               <Route path="workflows/:id" element={<Editor />} />
+              <Route path="settings" element={<Settings />}/>
             </Route>
           </Route>
 
