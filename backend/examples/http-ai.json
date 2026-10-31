@@ -1,6 +1,6 @@
 {
   "name": "Classify an API post (HTTP + AI)",
-  "description": "Example workflow 3. Fetches a post from a public API and classifies its topic with AI. Needs internet and an AI key.",
+  "description": "Example workflow 3. Run input: {\"postId\": 3}. Fetches a post from a public API and classifies its topic with AI. Needs internet and an AI key.",
   "input": { "postId": 3 },
   "nodes": [
     { "id": "trigger-1", "type": "manualTrigger", "position": { "x": 0, "y": 0 }, "data": { "label": "Start", "config": {} } },

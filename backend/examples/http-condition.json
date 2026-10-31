@@ -1,6 +1,6 @@
 {
   "name": "Todo status check (HTTP + Condition)",
-  "description": "Example workflow 2. Fetches a todo from a real public API, branches on body.completed, then merges. Needs internet, no AI key.",
+  "description": "Example workflow 2. Run input: {\"todoId\": 1} (open) or {\"todoId\": 4} (done). Fetches a todo from a real public API, branches on body.completed, then merges. Needs internet, no AI key.",
   "input": { "todoId": 1 },
   "nodes": [
     { "id": "trigger-1", "type": "manualTrigger", "position": { "x": 0, "y": 0 }, "data": { "label": "Start", "config": {} } },

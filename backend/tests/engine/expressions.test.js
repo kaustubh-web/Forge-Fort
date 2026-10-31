@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveTemplate, resolveConfig, findExpressions, parsePath } from "../../src/engine/expressions.js";
+import { resolveTemplate, resolveConfig, findExpressions, parsePath, findEmptyExpressions } from "../../src/engine/expressions.js";
 
 const scope = {
     input: { email: "a@b.com", count: 3 },
@@ -79,5 +79,18 @@ describe("findExpressions / parsePath", () => {
         expect(parsePath("nodes.a.status").error).toMatch(/nodes.<id>.output/);
         expect(parsePath("nodes..output").error).toMatch(/Invalid/);
         expect(parsePath("nodes.a.output.prototype").error).toMatch(/forbidden/);
+    });
+});
+
+describe("findEmptyExpressions", () => {
+    it("lists expressions whose value is missing, null or an empty string", () => {
+        const s = { input: { a: 1, blank: "", nothing: null }, nodes: {} };
+        expect(findEmptyExpressions("/x/{{input.a}}/{{input.b}}?q={{ input.blank }}&n={{input.nothing}}", s)).toEqual([
+            "{{input.b}}",
+            "{{ input.blank }}",
+            "{{input.nothing}}",
+        ]);
+        expect(findEmptyExpressions("/x/{{input.a}}", s)).toEqual([]);
+        expect(findEmptyExpressions(undefined, s)).toEqual([]);
     });
 });

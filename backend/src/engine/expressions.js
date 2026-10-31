@@ -113,6 +113,19 @@ export function resolveTemplate(text, scope) {
     });
 }
 
+// The expressions in `text` whose value is missing (undefined, null or ""), as written ("{{input.postId}}").
+// For fields where a silently empty part changes the meaning: "/posts/{{input.postId}}" would
+// become "/posts/" and fetch the whole list instead of failing. Used by the HTTP node's URL.
+export function findEmptyExpressions(text, scope) {
+    if (typeof text !== "string") return [];
+    const empty = [];
+    for (const [match, path] of text.matchAll(EXPRESSION)) {
+        const value = resolvePath(path, scope);
+        if (value !== KEEP && (value === undefined || value === null || value === "")) empty.push(match);
+    }
+    return empty;
+}
+
 // Resolve every string inside a config (objects and arrays, any depth). Returns a new value;
 // the stored workflow config is never modified.
 export function resolveConfig(value, scope) {

@@ -266,7 +266,8 @@ async function executeNode(node, record, context, { runSignal, stopError, nodeTi
 
     // Expressions are resolved at run time, against the outputs that exist right now.
     // The stored config is never modified. Resolved once: every attempt sends the same request.
-    const config = resolveConfig(node.data.config, { nodes: context.nodes, input: context.input });
+    const scope = { nodes: context.nodes, input: context.input };
+    const config = resolveConfig(node.data.config, scope);
 
     // Policy: the node's own config wins, then the type's default (HTTP/AI retry), then run once.
     const { maxAttempts, backoffMs } = config.retry ?? definition.defaultRetry ?? NO_RETRY;
@@ -276,7 +277,7 @@ async function executeNode(node, record, context, { runSignal, stopError, nodeTi
     for (let attempt = 1; ; attempt++) {
         record.attempts = attempt;
         try {
-            return await runAttempt(definition, { config, input: record.input, log, node }, { runSignal, stopError, timeoutMs });
+            return await runAttempt(definition, { config, input: record.input, log, node, scope }, { runSignal, stopError, timeoutMs });
         } catch (error) {
             // Retry only errors the handler marked as transient. A Stop, a workflow timeout,
             // a bad config or a 404 would fail the same way again, so they end the node now.

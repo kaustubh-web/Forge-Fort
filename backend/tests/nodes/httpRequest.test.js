@@ -194,4 +194,30 @@ describe("HTTP node inside a workflow", () => {
         expect(result.outputs.yes.message).toBe("Count: 3");
         expect(result.nodes.find((r) => r.nodeId === "no").skipReason).toBe("Condition 'ok' took the true branch");
     });
+
+    it("fails without sending a request when an expression in the URL is empty", async () => {
+        let requests = 0;
+        const count = () => requests++;
+        server.on("request", count);
+        const wf = workflow(
+            [trigger(), node("http", "httpRequest", { url: `${base()}/posts/{{input.postId}}` }), output("out", "done")],
+            [edge("trigger", "http"), edge("http", "out")]
+        );
+        const result = await runWorkflow({ workflow: wf, input: { todoId: 1 } });
+        server.off("request", count);
+
+        expect(result.status).toBe("failed");
+        expect(result.error.message).toBe("URL expression {{input.postId}} is empty. Check the Run input");
+        expect(result.nodes.find((r) => r.nodeId === "http").attempts).toBe(1); // not retried
+        expect(requests).toBe(0);
+    });
+
+    it("names the earlier node when its output is the empty part", async () => {
+        const wf = workflow(
+            [trigger(), node("http", "httpRequest", { url: `${base()}/x?id={{nodes.trigger.output.id}}` })],
+            [edge("trigger", "http")]
+        );
+        const result = await runWorkflow({ workflow: wf, input: {} });
+        expect(result.error.message).toBe("URL expression {{nodes.trigger.output.id}} is empty. Check the earlier node's output");
+    });
 });

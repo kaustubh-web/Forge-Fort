@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { keyValue, retry, isBlank } from "./shared.js";
 import { NodeError } from "../engine/errors.js";
+import { findEmptyExpressions } from "../engine/expressions.js";
 import { safeFetch, SafeFetchError } from "../net/safeFetch.js";
 import { redactHeaders } from "../utils/redact.js";
 import { env } from "../config/env.js";
@@ -23,7 +24,16 @@ const FORBIDDEN_HEADERS = new Set(["host", "connection", "content-length", "tran
 const METHODS_WITHOUT_BODY = new Set(["GET", "DELETE"]);
 
 export function createHttpRequestHandler(fetchImpl) {
-    return async function execute({ config, signal }) {
+    return async function execute({ config, signal, node, scope }) {
+        // Fail before sending anything if an expression in the URL came out empty
+        // ("/posts/{{input.postId}}" run with {"todoId": 1} would otherwise fetch "/posts/").
+        if (scope) {
+            const [missing] = findEmptyExpressions(node?.data?.config?.url, scope);
+            if (missing) {
+                const where = /^\{\{\s*input\./.test(missing) ? "the Run input" : "the earlier node's output";
+                throw new NodeError(`URL expression ${missing} is empty. Check ${where}`);
+            }
+        }
         const method = config.method ?? "GET";
         const url = buildUrl(config.url, config.query);
         const headers = buildHeaders(config.headers);

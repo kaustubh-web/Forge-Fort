@@ -1,6 +1,6 @@
 {
   "name": "Summarize text (AI)",
-  "description": "Example workflow 1. Summarizes the text given as input. Needs AI_PROVIDER, its API key and AI_MODEL in backend/.env.",
+  "description": "Example workflow 1. Run input: {\"text\": \"a paragraph\"}. Summarizes the text. Needs AI_PROVIDER, its API key and AI_MODEL in backend/.env.",
   "input": {
     "text": "Forge-fort is a visual workflow builder. Users drag nodes onto a canvas, connect them, and run the workflow on a Node.js backend. The engine orders nodes with Kahn's algorithm, runs them one at a time, and decides which branches run with an edge-state model. HTTP requests are protected against SSRF, AI calls go through Gemini or OpenAI, and every node can retry transient failures with exponential backoff."
   },
