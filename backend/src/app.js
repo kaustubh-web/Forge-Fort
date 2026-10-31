@@ -7,6 +7,7 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import authRoutes  from "./routes/authRoutes.js";
 import workflowRoutes from "./routes/workflowRoutes.js";
 import executionRoutes from "./routes/executionRoutes.js";
+import secretRoutes from "./routes/secretRoutes.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 const app = express();
 
@@ -30,6 +31,7 @@ app.use("/api", apiLimiter);
 app.use("/api/auth",authRoutes);
 app.use("/api/workflows",workflowRoutes);
 app.use("/api/executions",executionRoutes);
+app.use("/api/secrets", secretRoutes);
 
 app.use(notFound);
 
