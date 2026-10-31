@@ -53,6 +53,9 @@ Open one, click **Run**, paste the input, and watch the nodes colour in. The log
 | `JWT_EXPIRES_IN` | Token lifetime | 7d |
 | `CORS_ORIGIN` | Allowed frontend origin | required |
 | `AUTH_RATE_LIMIT` | Auth requests per IP per 15 min | 20 |
+| `API_RATE_LIMIT` | Requests per IP per 15 min, all `/api` routes except `/api/health` | 600 |
+| `EXECUTE_RATE_LIMIT` | Runs started per user per minute | 30 |
+| `TRUST_PROXY` | Proxy hops in front of the app (0 locally, 1 on Render/Railway), so rate limits see the real client IP | 0 |
 | `NODE_ENV` | development / test / production | development |
 | `MAX_NODES` / `MAX_EDGES` | Workflow size limits | 50 / 100 |
 | `DEBUG_ENGINE` | `true` prints the engine's run order, edge states and decisions | false |

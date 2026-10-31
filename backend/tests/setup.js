@@ -9,6 +9,8 @@ process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = "test-secret-test-secret-test-secret-123456";
 process.env.CORS_ORIGIN = "http://localhost:5173";
 process.env.AUTH_RATE_LIMIT = "1000";
+process.env.API_RATE_LIMIT = "100000";
+process.env.EXECUTE_RATE_LIMIT = "1000";
 
 
 beforeAll(async()=>{

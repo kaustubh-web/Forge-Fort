@@ -9,6 +9,11 @@ const schema = z.object({
   CORS_ORIGIN: z.string().url(),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   AUTH_RATE_LIMIT: z.coerce.number().int().positive().default(20),
+  API_RATE_LIMIT: z.coerce.number().int().positive().default(600), // per IP per 15 min, all /api routes
+  EXECUTE_RATE_LIMIT: z.coerce.number().int().positive().default(30), // runs started per user per minute
+  // Proxy hops in front of the app (0 locally, 1 behind Render/Railway/Heroku). Express then takes
+  // the client IP from X-Forwarded-For, so rate limits see real users instead of the proxy.
+  TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
   MAX_NODES: z.coerce.number().int().positive().default(50),
   MAX_EDGES: z.coerce.number().int().positive().default(100),
   // Engine limits (SPEC section 4). A node's own timeoutMs overrides NODE_TIMEOUT_MS.
