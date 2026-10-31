@@ -279,3 +279,44 @@ describe("markInterruptedExecutions (server boot)", () => {
         expect((await WorkflowExecution.findById(finished._id)).status).toBe("completed");
     });
 });
+
+describe("concurrent run cap (MAX_CONCURRENT_RUNS = 3 by default)", () => {
+    const cancel = (auth, id) => request(app).post(`/api/executions/${id}/cancel`).set("Authorization", auth);
+
+    it("refuses a 4th simultaneous run with 429, allows one again after a run ends, and is per user", async () => {
+        // Every HTTP node hangs until Stop, so the runs stay "running".
+        nodeRegistry.httpRequest.execute = ({ signal }) =>
+            new Promise((resolve, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))));
+        const auth = await newUser();
+        const wf = await createWorkflow(auth, withHttp);
+
+        const ids = [];
+        for (let i = 0; i < 3; i++) {
+            const res = await execute(auth, wf, {});
+            expect(res.status).toBe(202);
+            ids.push(res.body.data.executionId);
+        }
+
+        const fourth = await execute(auth, wf, {});
+        expect(fourth.status).toBe(429);
+        expect(fourth.body.error).toMatchObject({ code: "TOO_MANY_RUNS", message: expect.stringContaining("3 runs in progress") });
+        expect(await WorkflowExecution.countDocuments({ workflow: wf })).toBe(3); // no record for the refused run
+
+        // Someone else is not affected by this user's runs.
+        const other = await newUser();
+        const theirs = await execute(other, await createWorkflow(other, withHttp), {});
+        expect(theirs.status).toBe(202);
+
+        // Once one run ends, there is room again.
+        await cancel(auth, ids[0]);
+        await waitFor(auth, ids[0]);
+        const again = await execute(auth, wf, {});
+        expect(again.status).toBe(202);
+
+        // Clean up: stop everything still hanging.
+        for (const id of [...ids.slice(1), again.body.data.executionId]) await cancel(auth, id);
+        await cancel(other, theirs.body.data.executionId);
+        for (const id of [...ids.slice(1), again.body.data.executionId]) await waitFor(auth, id);
+        await waitFor(other, theirs.body.data.executionId);
+    });
+});

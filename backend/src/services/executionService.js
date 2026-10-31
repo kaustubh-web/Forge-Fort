@@ -6,6 +6,7 @@ import { startExecution } from "../executions/executionRunner.js";
 import * as runningExecutions from "../executions/runningExecutions.js";
 import { redactDeep } from "../utils/redact.js";
 import { AppError } from "../utils/AppError.js";
+import {env} from "../config/env.js";
 
 const notFound = () => new AppError(404,"NOT_FOUND","Execution not found");
 
@@ -25,6 +26,19 @@ export async function executeWorkflow(ownerId, workflowId, input){
     const workflow = await getWorkflow(ownerId, workflowId);
     const plain = workflow.toObject();
     const {order, graph} = validateForRun(plain);
+
+    // Each run holds outbound HTTP/AI calls for up to WORKFLOW_TIMEOUT_MS, so cap how many one
+    // user can have going at once. Checked after validation (a bad graph still gets its 400)
+    // and before the record exists. MongoDB is the source of truth: boot recovery clears any
+    // record a crashed server left "running", so it cannot block the user forever.
+    const runningCount = await WorkflowExecution.countDocuments({owner: ownerId, status:"running"});
+    if(runningCount >= env.MAX_CONCURRENT_RUNS){
+        throw new AppError(
+            429,
+            "TOO_MANY_RUNS",
+            `You already have ${runningCount} runs in progress. Wait for one to finish or stop it.`
+        );
+    }
 
     const execution = await WorkflowExecution.create({
         workflow: workflow._id,
