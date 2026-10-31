@@ -3,7 +3,7 @@ import { keyValue, retry, isBlank } from "./shared.js";
 import { NodeError } from "../engine/errors.js";
 import { findEmptyExpressions } from "../engine/expressions.js";
 import { safeFetch, SafeFetchError } from "../net/safeFetch.js";
-import { redactHeaders } from "../utils/redact.js";
+import { redactHeaders, isSensitiveName } from "../utils/redact.js";
 import { env } from "../config/env.js";
 
 // HTTP Request: calls a URL and outputs { status, headers, body }.
@@ -80,11 +80,34 @@ export const httpRequest = {
         body: z.string().max(100000).optional(), // JSON text, may contain {{expressions}}
         timeoutMs: z.number().int().min(1000).max(120000).optional(),
         retry: retry.optional(),
-    }),
+    }).superRefine(rejectLiteralSecrets),
     requiredFields: (c) => (isBlank(c.url) ? ["URL"] : []),
     defaultRetry,
     execute: createHttpRequestHandler(safeFetch),
 };
+
+// A header or query parameter whose name looks like a credential (Authorization, X-Api-Key,
+// token...) must not hold a typed-in value: that would store the secret in the workflow JSON
+// (SPEC section 9). Its value may only be expressions ({{secrets.NAME}}, or {{input.x}} from
+// the run input) plus an auth scheme word. Runs at save time and again before every run.
+const EXPRESSIONS = /\{\{[^{}]*\}\}/g;
+const AUTH_SCHEME = /^(bearer|basic|token|bot)?$/i;
+
+function rejectLiteralSecrets(config, ctx) {
+    for (const field of ["headers", "query"]) {
+        (config[field] ?? []).forEach(({ key, value }, index) => {
+            if (!isSensitiveName(key.trim()) || isBlank(value)) return;
+            const literal = value.replace(EXPRESSIONS, "").trim();
+            if (AUTH_SCHEME.test(literal)) return;
+            const what = field === "headers" ? "Header" : "Query parameter";
+            ctx.addIssue({
+                code: "custom",
+                path: [field, index, "value"],
+                message: `${what} "${key}" looks like a credential. Save it under Settings > Secrets and use {{secrets.NAME}} here`,
+            });
+        });
+    }
+}
 
 function buildUrl(rawUrl, query = []) {
     let url;

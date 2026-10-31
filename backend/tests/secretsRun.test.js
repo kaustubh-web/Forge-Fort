@@ -170,3 +170,50 @@ describe("createValueRedactor", () => {
         expect(createValueRedactor([])("anything")).toBe("anything");
     });
 });
+
+describe("typed-in credentials are refused when saving", () => {
+    const save = (auth, httpConfig) => request(app).post("/api/workflows").set("Authorization", auth).send(workflowUsing({ url: "https://x.test/", ...httpConfig }));
+
+    it("rejects a literal value in a sensitive header or query parameter", async () => {
+        const auth = await newUser();
+        const header = await save(auth, { headers: [{ key: "Authorization", value: "Bearer ghp_literal123" }] });
+        expect(header.status).toBe(400);
+        expect(header.body.error.details).toContainEqual({
+            field: "nodes.1.data.config.headers.0.value",
+            message: 'Header "Authorization" looks like a credential. Save it under Settings > Secrets and use {{secrets.NAME}} here',
+        });
+
+        const query = await save(auth, { query: [{ key: "api_key", value: "abc123" }] });
+        expect(query.status).toBe(400);
+        expect(query.body.error.details[0].message).toMatch(/^Query parameter "api_key" looks like a credential/);
+
+        const custom = await save(auth, { headers: [{ key: "X-Auth-Token", value: "{{secrets.T}}-and-literal" }] });
+        expect(custom.status).toBe(400);
+    });
+
+    it("allows secrets, run-input expressions, auth scheme words, blanks and normal headers", async () => {
+        const auth = await newUser();
+        for (const headers of [
+            [{ key: "Authorization", value: "Bearer {{secrets.API_TOKEN}}" }],
+            [{ key: "Authorization", value: "{{secrets.API_TOKEN}}" }],
+            [{ key: "x-api-key", value: "{{ secrets.API_TOKEN }}" }],
+            [{ key: "Authorization", value: "Bearer {{input.token}}" }],
+            [{ key: "Authorization", value: "" }], // an unfinished draft
+            [{ key: "Accept", value: "application/json" }],
+        ]) {
+            const res = await save(auth, { headers });
+            expect(res.status, JSON.stringify(headers)).toBe(201);
+        }
+    });
+
+    it("an old workflow saved with a literal credential cannot run until it is fixed", async () => {
+        const auth = await newUser();
+        const id = await setup(auth, workflowUsing({ url: "https://x.test/" }), {});
+        // Simulate data saved before this rule existed.
+        const { Workflow } = await import("../src/models/Workflow.js");
+        await Workflow.updateOne({ _id: id }, { $set: { "nodes.1.data.config.headers": [{ key: "Authorization", value: "Bearer old-literal-token" }] } });
+        const res = await execute(auth, id);
+        expect(res.status).toBe(400);
+        expect(JSON.stringify(res.body.error.details)).toContain("looks like a credential");
+    });
+});
