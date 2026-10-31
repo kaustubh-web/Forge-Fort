@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -19,7 +19,24 @@ import { nodeTypes, nextNodeId, DRAG_TYPE } from "@/lib/nodeTypes";
 const rfNodeTypes = Object.fromEntries(Object.keys(nodeTypes).map((type) => [type, NodeCard]));
 
 export default function FlowCanvas({ nodes, edges, setNodes, setEdges, onNodesChange, onEdgesChange }) {
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
+  const canvasRef = useRef(null);
+
+  // Refit when the canvas gets taller or shorter (the execution log appearing, collapsing or
+  // expanding), so the graph is not left half-hidden. Width changes (the config panel opening
+  // on every selection) keep the user's view.
+  useEffect(() => {
+    const element = canvasRef.current;
+    if (!element) return;
+    let lastHeight = element.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (element.clientHeight === lastHeight) return;
+      lastHeight = element.clientHeight;
+      fitView({ duration: 200 });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [fitView]);
 
   // The user dragged from one handle to another.
   const onConnect = useCallback(
@@ -98,6 +115,7 @@ export default function FlowCanvas({ nodes, edges, setNodes, setEdges, onNodesCh
 
   return (
     <ReactFlow
+      ref={canvasRef}
       nodes={nodes}
       edges={edges}
       onNodesChange={onNodesChange}

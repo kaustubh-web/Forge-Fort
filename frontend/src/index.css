@@ -135,3 +135,23 @@ div.react-flow.dark {
   --xy-selection-border-default: 1px dotted var(--primary);
 }
 
+
+/* Our "output" node type collides with React Flow's built-in .react-flow__node-output styles
+   (150px wide, padding, border, centred text, hover/selected shadows). NodeCard draws the whole
+   card itself, so the wrapper must add nothing; otherwise the card overflows it and fitView
+   measures the wrong size. */
+.react-flow .react-flow__node-output,
+.react-flow .react-flow__node-output.selectable:hover,
+.react-flow .react-flow__node-output.selectable.selected,
+.react-flow .react-flow__node-output.selectable:focus,
+.react-flow .react-flow__node-output.selectable:focus-visible {
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  text-align: left;
+  box-shadow: none;
+}
