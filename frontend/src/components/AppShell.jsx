@@ -3,11 +3,12 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Workflow, History, Settings, LogOut, Menu } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
+import Logo from "@/components/Logo";
 
-// Executions arrives in a later phase, so it is shown but disabled.
+// The app's main sections. Each item opens a page.
 const items = [
   { to: "/", label: "Workflows", icon: Workflow, enabled: true },
-  { label: "Executions", icon: History, enabled: false },
+  { to:"/executions",label: "Executions", icon: History, enabled: true },
   { to: "/settings", label: "Settings", icon: Settings, enabled: true },
 ];
 
@@ -42,7 +43,12 @@ export default function AppShell() {
           >
             <Menu className="size-4" />
           </button>
-          {open && <span className="truncate font-medium">Forge-fort</span>}
+          {open && (
+            <span className="flex min-w-0 items-center gap-2 font-medium">
+              <Logo className="size-5 shrink-0 text-primary" />
+              <span className="truncate">Forge-fort</span>
+            </span>
+          )}
         </div>
 
         <nav className="flex-1 space-y-0.5 p-2">

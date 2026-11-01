@@ -1,0 +1,18 @@
+<!-- Forge-fort mark: a fort with a branching workflow graph (trigger, condition, two branches)
+     cut out of it. Redrawn as vector from docs/Logo.png. The graph is a mask, so it shows the
+     background behind the logo, like the brand sheet. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <mask id="ff-graph" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect width="32" height="32" fill="#fff"/>
+      <!-- Positions measured from the brand sheet: trigger, condition, two branches. -->
+      <path d="M8.6 17.4H16.1L23.4 13.4M16.1 17.4L23.4 21.2" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round"/>
+      <circle cx="8.6" cy="17.4" r="2.1" fill="#000"/>
+      <circle cx="16.1" cy="17.4" r="2.3" fill="#000"/>
+      <circle cx="23.4" cy="13.4" r="2.5" fill="#000"/>
+      <circle cx="23.4" cy="21.2" r="2.5" fill="#000"/>
+    </mask>
+  </defs>
+  <path fill="#10B981" mask="url(#ff-graph)"
+        d="M3 4H9V8H12V4H20V8H23V4H29V28H3Z"/>
+</svg>
