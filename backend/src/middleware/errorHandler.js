@@ -16,6 +16,21 @@ export function errorHandler(err,req,res,next){
         })
     }
 
+    // Other errors from the JSON body parser (express.json) are the client's fault too. It marks
+    // them with a 4xx status and expose: true. Without this they fell through to the 500 below.
+    if(err.type === "entity.too.large"){ // the limit is set on express.json in app.js
+        return res.status(413).json({
+            success: false,
+            error: { code: "PAYLOAD_TOO_LARGE", message: "Request body is larger than 512 KB", details: null },
+        });
+    }
+    if(err.expose && err.status >= 400 && err.status < 500){
+        return res.status(err.status).json({
+            success: false,
+            error: { code: "BAD_REQUEST_BODY", message: err.message, details: null },
+        });
+    }
+
     console.error(err);
     res.status(500).json({
         success: false,
