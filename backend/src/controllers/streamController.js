@@ -1,5 +1,7 @@
 import * as executionService from "../services/executionService.js";
 import * as hub from "../executions/executionHub.js";
+import { env } from "../config/env.js";
+import { AppError } from "../utils/AppError.js";
 
 // GET /api/executions/:id/stream  (Server-Sent Events, docs/decisions/sse-auth.md)
 //
@@ -19,8 +21,18 @@ const HEARTBEAT_MS = 15_000;
 const FINAL_EVENTS = new Set(["workflow.completed", "workflow.failed", "workflow.cancelled"]);
 const FINISHED = new Set(["completed", "failed", "cancelled"]);
 
+// Open streams per user. Each one holds a socket, a hub listener and a heartbeat timer, so one
+// account must not be able to open thousands (resource exhaustion). In memory, like the hub:
+// a single-instance limitation, and it resets with the process, as do the streams themselves.
+const openStreams = new Map(); // userId -> count
+export const openStreamCount = (userId) => openStreams.get(String(userId)) ?? 0;
+
 export async function streamExecution(req, res) {
     const executionId = req.params.id;
+    const userId = String(req.user._id);
+    if (openStreamCount(userId) >= env.MAX_STREAMS_PER_USER) {
+        throw new AppError(429, "TOO_MANY_STREAMS", "Too many live views open. Close some tabs and try again.");
+    }
 
     // 1. Subscribe FIRST and hold events in a buffer, 2. then read the snapshot.
     // The other order loses events: anything the runner saved and published after our read
@@ -41,6 +53,9 @@ export async function streamExecution(req, res) {
         throw error; // headers not sent yet, so the error handler still answers with JSON
     }
 
+    // Counted only once the stream really opens (a 404 above never counts), and released in close().
+    openStreams.set(userId, openStreamCount(userId) + 1);
+
     res.writeHead(200, {
         "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform", // proxies must not cache or compress (buffer) it
@@ -54,6 +69,9 @@ export async function streamExecution(req, res) {
     function close() {
         if (closed) return;
         closed = true;
+        const left = openStreamCount(userId) - 1;
+        if (left > 0) openStreams.set(userId, left);
+        else openStreams.delete(userId);
         clearInterval(heartbeat);
         unsubscribe();
         res.end();

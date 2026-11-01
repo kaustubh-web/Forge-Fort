@@ -4,6 +4,7 @@ import app from "../src/app.js";
 import { nodeRegistry } from "../src/nodes/registry.js";
 import * as hub from "../src/executions/executionHub.js";
 import { WorkflowExecution } from "../src/models/WorkflowExecution.js";
+import { openStreamCount } from "../src/controllers/streamController.js";
 
 // SSE needs a real server: supertest waits for the whole response, but here we must read the
 // stream while it is still open (and release the slow node once the snapshot has arrived).
@@ -186,5 +187,46 @@ describe("GET /api/executions/:id/stream", () => {
         expect((await open("not-an-id", owner)).status).toBe(404);
         // The rejected requests left no listener behind.
         expect(hub.listenerCount(id)).toBe(0);
+    });
+});
+
+describe("open streams per user (MAX_STREAMS_PER_USER = 10 by default)", () => {
+    it("refuses the 11th open stream with 429 and allows one again after a stream closes", async () => {
+        let release;
+        const gate = new Promise((resolve) => (release = resolve));
+        nodeRegistry.httpRequest.execute = async () => {
+            await gate;
+            return { output: {} };
+        };
+        const auth = await newUser();
+        const userId = (await request(app).get("/api/auth/me").set("Authorization", auth)).body.data.user._id;
+        const id = await startRun(auth);
+
+        const controllers = [];
+        for (let i = 0; i < 10; i++) {
+            const controller = new AbortController();
+            controllers.push(controller);
+            expect((await open(id, auth, controller.signal)).status).toBe(200);
+        }
+        expect(openStreamCount(userId)).toBe(10);
+
+        const eleventh = await open(id, auth);
+        expect(eleventh.status).toBe(429);
+        expect((await eleventh.json()).error.code).toBe("TOO_MANY_STREAMS");
+
+        // A rejected request is not counted, and a 404 never counts either.
+        expect((await open("64b000000000000000000000", auth)).status).toBe(429);
+        expect(openStreamCount(userId)).toBe(10);
+
+        // The browser closes one tab: the server notices the disconnect and frees the slot.
+        controllers[0].abort();
+        await vi.waitFor(() => expect(openStreamCount(userId)).toBe(9));
+        const again = new AbortController();
+        expect((await open(id, auth, again.signal)).status).toBe(200);
+
+        // The run finishes: every stream gets the final event and closes, so the count goes to 0.
+        release();
+        await vi.waitFor(() => expect(openStreamCount(userId)).toBe(0), { timeout: 5000 });
+        for (const c of [...controllers, again]) c.abort();
     });
 });

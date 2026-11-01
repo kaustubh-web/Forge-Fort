@@ -57,6 +57,7 @@ Open one, click **Run**, paste the input, and watch the nodes colour in. The log
 | `API_RATE_LIMIT` | Requests per IP per 15 min, all `/api` routes except `/api/health` | 600 |
 | `EXECUTE_RATE_LIMIT` | Runs started per user per minute | 30 |
 | `MAX_CONCURRENT_RUNS` | Executions one user can have `running` at the same time | 3 |
+| `MAX_STREAMS_PER_USER` | Live-update (SSE) streams one user can have open at once | 10 |
 | `TRUST_PROXY` | Proxy hops in front of the app (0 locally, 1 on Render/Railway), so rate limits see the real client IP | 0 |
 | `NODE_ENV` | development / test / production | development |
 | `MAX_NODES` / `MAX_EDGES` | Workflow size limits | 50 / 100 |

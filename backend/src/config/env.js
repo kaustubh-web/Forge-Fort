@@ -14,6 +14,7 @@ const schema = z.object({
   API_RATE_LIMIT: z.coerce.number().int().positive().default(600), // per IP per 15 min, all /api routes
   EXECUTE_RATE_LIMIT: z.coerce.number().int().positive().default(30), // runs started per user per minute
   MAX_CONCURRENT_RUNS: z.coerce.number().int().positive().default(3), // running at once, per user
+  MAX_STREAMS_PER_USER: z.coerce.number().int().positive().default(10), // open SSE live views per user
   // Proxy hops in front of the app (0 locally, 1 behind Render/Railway/Heroku). Express then takes
   // the client IP from X-Forwarded-For, so rate limits see real users instead of the proxy.
   TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
