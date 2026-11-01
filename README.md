@@ -44,6 +44,9 @@ npm run seed -- you@example.com     # re-running updates them, never duplicates
 
 Open one, click **Run**, paste the input, and watch the nodes colour in. The log panel at the bottom shows each node's input, output, timing and skip reason; **History** lists past runs.
 
+## Deployment
+Backend on Render (one instance, `render.yaml` Blueprint), frontend on Vercel (`frontend/vercel.json`), data on MongoDB Atlas. The step-by-step guide covers the least-privilege database user, network access, production secrets, free-tier behaviour and a smoke test: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
+
 ## Environment variables (backend)
 | Variable | Purpose | Default |
 |---|---|---|

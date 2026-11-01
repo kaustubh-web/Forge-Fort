@@ -1,0 +1,31 @@
+# Render Blueprint for the backend (docs/DEPLOYMENT.md). The frontend is a static site on Vercel.
+# One instance only: runs, live streams, rate limits and the cancel map live in process memory.
+services:
+  - type: web
+    name: forge-fort-api
+    runtime: node
+    plan: free # sleeps after 15 min idle; a run in progress dies with it (see DEPLOYMENT.md)
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1" # Render's proxy is one hop in front of the app
+      # Asked for once when the Blueprint is created. Never commit these values.
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SECRETS_KEY
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false # the Vercel URL, e.g. https://forge-fort.vercel.app (no trailing slash)
+      - key: AI_PROVIDER
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        sync: false
