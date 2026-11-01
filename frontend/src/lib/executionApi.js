@@ -16,6 +16,13 @@ export async function getExecution(executionId) {
   return res.data.data.execution;
 }
 
+// Newest runs across all of the user's workflows (the Executions page). Optional filter:
+// status = "running" | "completed" | "failed" | "cancelled". Summaries carry metadata.workflowName.
+export async function listAllExecutions(status) {
+  const res = await api.get("/executions", { params: status ? { status } : {} });
+  return res.data.data.executions;
+}
+
 // History of one workflow, newest first (summaries without node records).
 export async function listExecutions(workflowId) {
   const res = await api.get(`/workflows/${workflowId}/executions`);
