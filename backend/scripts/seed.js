@@ -1,4 +1,4 @@
-// Add the three SPEC example workflows (section 12) to an existing account.
+// Add the three SPEC example workflows (section 12), plus the trip-weather showcase, to an existing account.
 //
 //   npm run seed -- you@example.com
 //
@@ -12,7 +12,7 @@ import { User } from "../src/models/User.js";
 import { Workflow } from "../src/models/Workflow.js";
 import { workflowSchema } from "../src/schema/workflow.js";
 
-const EXAMPLES = ["ai-summarize.json", "http-condition.json", "http-ai.json"];
+const EXAMPLES = ["ai-summarize.json", "http-condition.json", "http-ai.json", "trip-weather.json"];
 
 const email = process.argv[2]?.trim().toLowerCase();
 if (!email) {

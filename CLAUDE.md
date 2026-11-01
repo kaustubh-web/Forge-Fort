@@ -82,4 +82,4 @@ Build explainability into the product itself:
 - Frontend (from `frontend/`): `npm run dev` (port 5173, strict), `npm run build`, `npm test` (Vitest, helper modules only). Needs `frontend/.env`.
 - Tests (from `backend/`): `npm test` (Vitest + supertest + mongodb-memory-server; no real DB needed).
 - Run a workflow file through the engine (from `backend/`): `npm run engine:run -- examples/diamond.json [input.json | 'json']`. Set `DEBUG_ENGINE=true` for engine debug logs. Ctrl+C cancels the run. Examples: `diamond`, `pipeline` (offline), `http-condition` (internet), `ai-summarize`, `http-ai` (need `AI_PROVIDER`, its key and `AI_MODEL`).
-- Seed example workflows (from `backend/`): `npm run seed -- you@example.com` adds the 3 SPEC examples to an existing account (re-running updates them, no duplicates).
+- Seed example workflows (from `backend/`): `npm run seed -- you@example.com` adds the 3 SPEC examples plus the trip-weather showcase to an existing account (re-running updates them, no duplicates).

@@ -29,7 +29,7 @@ npm run dev              # http://localhost:5173 (the port must match CORS_ORIGI
 ```
 Generate a secret: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
 
-Load the three example workflows into your account (register in the app first):
+Load the example workflows (the three SPEC examples plus the showcase) into your account (register in the app first):
 ```bash
 cd backend
 npm run seed -- you@example.com     # re-running updates them, never duplicates
@@ -41,6 +41,7 @@ npm run seed -- you@example.com     # re-running updates them, never duplicates
 | 1. Summarize text (Trigger -> AI -> Output) | `{"text": "a paragraph"}` | an AI key |
 | 2. Todo status check (Trigger -> HTTP -> Condition -> Transform / Output -> Output) | `{"todoId": 1}` (false branch) or `{"todoId": 4}` (true branch) | internet |
 | 3. Classify an API post (Trigger -> HTTP -> AI classify -> Output) | `{"postId": 3}` | internet and an AI key |
+| **Showcase:** Trip weather advisor (11 nodes: geocoding API -> "city found?" branch -> forecast API -> Transform -> "rain likely?" branch -> AI day plan -> Output) | `{"city": "Mumbai"}` (rainy branch today), `{"city": "Dubai"}` (dry), `{"city": "Qwxzzy"}` (not found) | internet and an AI key |
 
 Open one, click **Run**, paste the input, and watch the nodes colour in. The log panel at the bottom shows each node's input, output, timing and skip reason; **History** lists past runs.
 

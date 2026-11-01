@@ -1,0 +1,105 @@
+{
+  "name": "Trip weather advisor (showcase)",
+  "description": "Run input: {\"city\": \"Mumbai\"} (any city). Finds the city, gets a live 3-day forecast, branches on the chance of rain and asks the AI for a matching day plan. Two public APIs (Open-Meteo, no key), two branches, two AI nodes. Needs internet and an AI key.",
+  "input": { "city": "Mumbai" },
+  "nodes": [
+    { "id": "trigger-1", "type": "manualTrigger", "position": { "x": 0, "y": 160 }, "data": { "label": "Start", "config": {} } },
+    {
+      "id": "geo-1", "type": "httpRequest", "position": { "x": 260, "y": 160 },
+      "data": { "label": "Find the city", "config": {
+        "method": "GET",
+        "url": "https://geocoding-api.open-meteo.com/v1/search",
+        "query": [
+          { "key": "name", "value": "{{input.city}}" },
+          { "key": "count", "value": "1" }
+        ],
+        "timeoutMs": 10000,
+        "retry": { "maxAttempts": 3, "backoffMs": 500 }
+      } }
+    },
+    {
+      "id": "found-1", "type": "condition", "position": { "x": 520, "y": 160 },
+      "data": { "label": "City found?", "config": { "left": "{{nodes.geo-1.output.body.results}}", "operator": "isNotEmpty", "right": "" } }
+    },
+    {
+      "id": "notfound-1", "type": "output", "position": { "x": 780, "y": 340 },
+      "data": { "label": "Unknown city", "config": { "message": "Could not find a place called \"{{input.city}}\". Try another spelling." } }
+    },
+    {
+      "id": "weather-1", "type": "httpRequest", "position": { "x": 780, "y": 60 },
+      "data": { "label": "3-day forecast", "config": {
+        "method": "GET",
+        "url": "https://api.open-meteo.com/v1/forecast?latitude={{nodes.geo-1.output.body.results.0.latitude}}&longitude={{nodes.geo-1.output.body.results.0.longitude}}",
+        "query": [
+          { "key": "current", "value": "temperature_2m,wind_speed_10m" },
+          { "key": "daily", "value": "temperature_2m_max,temperature_2m_min,precipitation_probability_max" },
+          { "key": "timezone", "value": "auto" },
+          { "key": "forecast_days", "value": "3" }
+        ],
+        "timeoutMs": 10000,
+        "retry": { "maxAttempts": 3, "backoffMs": 500 }
+      } }
+    },
+    {
+      "id": "shape-1", "type": "transform", "position": { "x": 1040, "y": 60 },
+      "data": { "label": "Keep the useful bits", "config": { "operations": [
+        { "type": "select", "params": { "fields": ["body"] } },
+        { "type": "rename", "params": { "from": "body", "to": "forecast" } },
+        { "type": "merge", "params": { "source": "{{nodes.geo-1.output.body.results.0}}" } },
+        { "type": "select", "params": { "fields": ["name", "country", "timezone", "forecast"] } }
+      ] } }
+    },
+    {
+      "id": "rain-1", "type": "condition", "position": { "x": 1300, "y": 60 },
+      "data": { "label": "Rain likely today?", "config": { "left": "{{nodes.weather-1.output.body.daily.precipitation_probability_max.0}}", "operator": "greaterThan", "right": "50" } }
+    },
+    {
+      "id": "ai-rain", "type": "aiText", "position": { "x": 1560, "y": -60 },
+      "data": { "label": "Plan a rainy day", "config": {
+        "mode": "generate",
+        "instructions": "You are a friendly local guide. Using the forecast data, write a short plan for a rainy day in this city: 3 bullet points (indoor ideas, what to carry, best time to step out), max 60 words. Mention today's rain chance and temperature.",
+        "input": "{{nodes.shape-1.output}}"
+      } }
+    },
+    {
+      "id": "ai-dry", "type": "aiText", "position": { "x": 1560, "y": 180 },
+      "data": { "label": "Plan a dry day", "config": {
+        "mode": "generate",
+        "instructions": "You are a friendly local guide. Using the forecast data, write a short plan for a dry day in this city: 3 bullet points (outdoor ideas, what to wear, best time to go out), max 60 words. Mention today's temperature range.",
+        "input": "{{nodes.shape-1.output}}"
+      } }
+    },
+    {
+      "id": "out-rain", "type": "output", "position": { "x": 1820, "y": -60 },
+      "data": { "label": "Rainy-day result", "config": {
+        "message": "{{nodes.shape-1.output.name}}, {{nodes.shape-1.output.country}}: {{nodes.weather-1.output.body.daily.precipitation_probability_max.0}}% chance of rain today, {{nodes.weather-1.output.body.current.temperature_2m}}°C now. Pack an umbrella.",
+        "data": [
+          { "key": "plan", "value": "{{nodes.ai-rain.output.text}}" },
+          { "key": "next3Days", "value": "{{nodes.weather-1.output.body.daily}}" }
+        ]
+      } }
+    },
+    {
+      "id": "out-dry", "type": "output", "position": { "x": 1820, "y": 180 },
+      "data": { "label": "Dry-day result", "config": {
+        "message": "{{nodes.shape-1.output.name}}, {{nodes.shape-1.output.country}}: only {{nodes.weather-1.output.body.daily.precipitation_probability_max.0}}% chance of rain today, {{nodes.weather-1.output.body.current.temperature_2m}}°C now. Good day to be outside.",
+        "data": [
+          { "key": "plan", "value": "{{nodes.ai-dry.output.text}}" },
+          { "key": "next3Days", "value": "{{nodes.weather-1.output.body.daily}}" }
+        ]
+      } }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "trigger-1", "target": "geo-1", "sourceHandle": null },
+    { "id": "e2", "source": "geo-1", "target": "found-1", "sourceHandle": null },
+    { "id": "e3", "source": "found-1", "target": "weather-1", "sourceHandle": "true" },
+    { "id": "e4", "source": "found-1", "target": "notfound-1", "sourceHandle": "false" },
+    { "id": "e5", "source": "weather-1", "target": "shape-1", "sourceHandle": null },
+    { "id": "e6", "source": "shape-1", "target": "rain-1", "sourceHandle": null },
+    { "id": "e7", "source": "rain-1", "target": "ai-rain", "sourceHandle": "true" },
+    { "id": "e8", "source": "rain-1", "target": "ai-dry", "sourceHandle": "false" },
+    { "id": "e9", "source": "ai-rain", "target": "out-rain", "sourceHandle": null },
+    { "id": "e10", "source": "ai-dry", "target": "out-dry", "sourceHandle": null }
+  ]
+}
