@@ -5,7 +5,7 @@
 
 A visual workflow builder (React Flow) with a custom Node.js execution engine. Users connect nodes on a canvas, run workflows on the backend, and inspect persisted results.
 
-> Status: Phases 1-5 complete (auth, editor, engine, HTTP/AI nodes, runs from the app with live updates and history). Phase 6 (hardening, deployment) is next. See `docs/SPEC.md` for scope and `docs/ARCHITECTURE.md` for how execution works.
+> Status: v1 complete. All six phases are done: auth, editor, engine, HTTP/AI nodes, runs from the app with live updates and history, and security hardening with an encrypted secrets vault and deployment notes. See `docs/SPEC.md` for scope, `docs/ARCHITECTURE.md` for how execution works and `docs/walkthroughs/` for a guided tour of each phase.
 
 ## Structure
 - `backend/` Express + MongoDB (Mongoose) API
@@ -148,9 +148,11 @@ The workflow JSON (SPEC section 3) is validated with Zod in `backend/src/schema/
 - The **execution log** (bottom, collapsible) lists nodes in run order with status, duration, retry attempts and skip reasons; expand a row for its input and output JSON with a copy button.
 - **Settings** (sidebar) manages secrets: add, replace or delete them, and copy the `{{secrets.NAME}}` expression. A saved value is never shown again.
 - **History** lists the last 50 runs of the workflow. Click one to open it, or **Rerun** it with the same input.
+- **Executions** (sidebar) lists the newest runs across all workflows, with a status filter (All, Running, Completed, Failed, Cancelled). A failed row shows its error; clicking a row opens that run in its editor.
+- The hamburger button collapses the sidebar to an icon rail. It starts collapsed in the editor, to leave room for the canvas, and remembers each choice.
 - The URL carries the run (`/workflows/:id?run=<executionId>`), so a refresh reloads it from MongoDB and reconnects if it is still running. A dropped stream reconnects after 1, 2, 5 and 10 s.
 
-## Execution engine (Phase 3)
+## Execution engine
 The engine lives in `backend/src/engine/`. It runs in-process and sequentially. The app runs it through `POST /api/workflows/:id/execute` (see "Running from the app" below); the CLI runner runs a JSON file directly, without the database:
 ```bash
 cd backend
@@ -208,14 +210,23 @@ cd frontend && npm run build
 ```
 The backend tests use an in-memory MongoDB, so they never touch your real database. React components do not have automated tests yet; their logic lives in tested helpers in `frontend/src/lib/`.
 
-## Security notes (so far)
-- Passwords hashed with bcrypt (12 rounds); the hash is never returned by the API.
-- Login returns the same error for an unknown email and a wrong password.
-- helmet, CORS limited to one origin, JSON body size limit, rate limit on auth routes.
-- Secrets live only in `.env` files, which are gitignored. AI keys are read only by `backend/src/ai/` and never logged.
-- HTTP node SSRF protection (see "HTTP Request and SSRF" above); sensitive response headers are redacted in node outputs.
-- Stored executions are redacted (`redactDeep` in `backend/src/utils/redact.js`): any field whose key looks like a secret (`authorization`, `apiKey`, `token`, `password`, ...) is replaced with `[REDACTED]` in the stored input, node inputs, outputs, errors and stream events. The engine itself gets the real input, in memory only.
-- No eval anywhere: expressions are path lookups and the AI extract schema is checked by walking it as data.
+## Security notes
+The full review, with what was fixed and what was checked, is in **[docs/security-review.md](docs/security-review.md)**.
+- **Passwords:** bcrypt with 12 rounds, limited to 72 *bytes* (bcrypt's real limit); the hash is never returned. Login gives the same error, and takes the same time, for an unknown email and a wrong password.
+- **JWT:** signed and verified with HS256 only. A malformed token, or one with an invalid subject, gets 401.
+- **Every route** except register, login and health needs a token, and every query filters by owner: another user's id returns 404.
+- **Abuse limits:**
+  - rate limits per IP on auth and on the whole API, and per user on starting runs;
+  - at most `MAX_CONCURRENT_RUNS` running executions and `MAX_STREAMS_PER_USER` open streams per user;
+  - oversized bodies get 413.
+- **helmet**, and CORS limited to one origin.
+- **Keys:** server secrets live only in gitignored `.env` files and are checked at boot. AI keys are read only by `backend/src/ai/` and never logged.
+- **Saved secrets** are encrypted with AES-256-GCM. They are allowed only in HTTP nodes and are never returned by the API (`docs/decisions/secrets.md`).
+- **Redaction** happens before anything is stored, streamed or printed:
+  - by key name (`authorization`, `apiKey`, `token`, `password`, ...), via `redactDeep`;
+  - by value, for every decrypted secret, including its URL-encoded form.
+- **HTTP node:** SSRF protection (see "HTTP Request and SSRF" above). Header names and values are validated, and sensitive response headers are redacted.
+- **No eval anywhere:** expressions are path lookups, and the AI extract schema is checked by walking it as data.
 
 ## Limitations
 - The auth token is stored in `localStorage` (see `docs/decisions/auth-storage.md`).
@@ -224,11 +235,29 @@ The backend tests use an in-memory MongoDB, so they never touch your real databa
 - Redaction is by key name. A secret under an innocent name is not caught, and a harmless field such as `tokenCount` is hidden.
 - Rerun uses the stored, redacted input, so a field like `apiKey` is sent as `"[REDACTED]"`.
 - Node events carry the full node record, so a large HTTP response (up to 1 MB) is sent to the browser in full.
-- History shows this workflow's last 50 runs; there is no global executions page yet. The log panel is collapsible but not resizable.
+- Rate-limit counters, the concurrent-run cap and the stream cap live in process memory (single instance). The concurrent-run cap counts `running` records and then inserts, so two runs started in the same instant can both slip past it. An atomic counter would close that gap.
+- History shows the last 50 runs per workflow and the Executions page up to 100; there is no paging. The log panel is collapsible but not resizable.
+- The frontend ships as one JavaScript bundle of about 800 KB, or 250 KB gzipped (Vite warns about it); the editor isn't code-split yet.
 - HTTP node: any port on a public host is reachable; an HTTP status >= 400 fails the node (a Condition cannot branch on a 404); a JSON body built from expressions breaks if a value contains quotes (use a whole-body expression instead).
 - Secrets protect against a leaked database, not a compromised server: `SECRETS_KEY` lives next to the app. A KMS would be the next step. There is no key rotation yet (stored values carry a `v1` prefix for it).
 - Only sensitive header and query names are checked for typed-in credentials. A JSON body can't be checked reliably; use `{{secrets.NAME}}` there too. Secret values shorter than 4 characters are not masked by value.
 - Aborting an AI call stops the wait, but the provider may still bill for work already done.
 - The "unsaved changes" warning only covers closing or reloading the tab, not clicking a link inside the app.
 
-More sections (nodes, execution flow, deployment, future work) are added as each phase lands.
+## Future work
+The v1 design leaves room for these. Each one notes what it needs.
+- **Delay node.** Waiting minutes or days inside the in-process loop would hold the run in memory and die on a restart. It needs pause and resume:
+  - persist the run as `waiting` with a wake-up time;
+  - a scheduler picks it up and continues from the stored context.
+  - The node records and edge states are already saved after every node, so the engine can restart from the first unfinished node.
+- **Manual Approval node.** Same pause and resume, but woken by a person:
+  - the run stops as `waiting` (the amber status colour is reserved for it);
+  - an `approve` / `reject` route resumes it down the matching handle, as a Condition does.
+- **AI Agent node.** A bounded tool loop: the model can call one or two registered tools (for example an HTTP GET through the same SSRF guard), with a step limit, a token budget and every tool call shown in the log. Tool results are untrusted input, so they are fenced like user text against prompt injection.
+- **Queue-based workers.** Move runs out of the API process into a job queue (for example BullMQ on Redis). Workers execute and publish events through Redis pub/sub, so SSE, Stop and the rate limits work across several instances, and a deploy no longer kills runs. This removes the "single instance" limitation above.
+- **Smaller items:**
+  - parallel branches (independent nodes in the same Kahn layer);
+  - `SECRETS_KEY` rotation (the `v1` prefix is in place) or a cloud KMS;
+  - an httpOnly-cookie session instead of `localStorage`;
+  - code-splitting the editor;
+  - paging for history.
