@@ -6,6 +6,7 @@ import { NodeError, CancelledError, WorkflowTimeoutError } from "./errors.js";
 import { backoffDelay, sleep, raceAbort } from "./retry.js";
 import { debug } from "./debug.js";
 import { env } from "../config/env.js";
+import { createValueRedactor } from "../utils/redact.js";
 
 // Nodes without a retry policy (in their config or their definition) run once.
 const NO_RETRY = { maxAttempts: 1, backoffMs: 0 };
@@ -57,6 +58,9 @@ export async function runWorkflow({
         workflowId,
         input,
         secrets, // never emitted or returned: only read through expressions
+        // For console output (debug lines, unexpected-error stacks): an error message can quote a
+        // resolved URL or header, so it may contain a secret. Stored data is redacted by the runner.
+        hideSecrets: createValueRedactor(Object.values(secrets)),
         status: "running",
         error: null,
         nodes: {}, // nodeId -> { status, output, error }
@@ -158,7 +162,7 @@ export async function runWorkflow({
             // NodeError / CancelledError = an expected, explainable stop. Anything else is a bug
             // in our code: still fail the node with its message (never swallow it), print the stack.
             const expected = error instanceof NodeError || error instanceof CancelledError;
-            if (!expected) console.error(`[engine] unexpected error in ${nodeId}:`, error);
+            if (!expected) console.error(`[engine] unexpected error in ${nodeId}:`, context.hideSecrets(error.stack ?? String(error)));
             const message = expected ? error.message : `Unexpected error: ${error.message}`;
             // Stop pressed mid-node: the node did not finish, so it is "failed" with "Cancelled",
             // but the execution as a whole is "cancelled" (the user's choice, not an error).
@@ -170,7 +174,7 @@ export async function runWorkflow({
             setOutgoing(nodeId, () => "inactive");
             context.status = cancelled ? "cancelled" : "failed";
             context.error = cancelled ? null : { nodeId, message };
-            debug(`fail ${nodeId}: ${message}`);
+            debug(`fail ${nodeId}: ${context.hideSecrets(message)}`);
             await send("node.failed", {
                 nodeId,
                 status: "failed",
@@ -290,7 +294,7 @@ async function executeNode(node, record, context, { runSignal, stopError, nodeTi
             }
             const waitMs = backoffDelay(attempt, backoffMs, error.retryAfterMs);
             record.attemptLog.push({ attempt, error: error.message, waitMs });
-            debug(`  ${node.id} attempt ${attempt} failed (${error.message}), retrying in ${waitMs} ms`);
+            debug(`  ${node.id} attempt ${attempt} failed (${context.hideSecrets(error.message)}), retrying in ${waitMs} ms`);
             try {
                 await sleep(waitMs, runSignal); // Stop during the wait ends it at once
             } catch {

@@ -123,13 +123,21 @@ function buildUrl(rawUrl, query = []) {
     return url.href;
 }
 
+// RFC 9110 "token": the characters allowed in a header name.
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
 function buildHeaders(list = []) {
     const headers = {};
     for (const { key, value } of list) {
         if (isBlank(key)) continue;
         const name = key.trim();
         if (FORBIDDEN_HEADERS.has(name.toLowerCase())) throw new NodeError(`Header "${name}" cannot be set`);
-        headers[name] = String(value);
+        // fetch refuses these anyway (no header injection is possible), but its TypeError looks
+        // like a network failure and would be retried. Say what is wrong, once.
+        if (!HEADER_NAME.test(name)) throw new NodeError(`Header name "${name}" has characters that are not allowed`);
+        const text = String(value);
+        if (/[\r\n\0]/.test(text)) throw new NodeError(`Header "${name}" contains a line break or null character`);
+        headers[name] = text;
     }
     return headers;
 }

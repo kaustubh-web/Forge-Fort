@@ -89,7 +89,7 @@ async function run({ execution, workflow, input, secrets, limits, executionId, s
         // Not a node failure (the engine turns those into a "failed" result): this is a bug, a
         // database error while persisting, or a graph that no longer validates. Never swallow
         // it: log the stack, store it on the execution, and tell the viewers.
-        console.error(`[runner] execution ${executionId} crashed:`, error);
+        console.error(`[runner] execution ${executionId} crashed:`, hideSecrets(error.stack ?? String(error)));
         await failExecution(executionId, execution.startedAt, { message: hideSecrets(error.message) });
     }
 }
