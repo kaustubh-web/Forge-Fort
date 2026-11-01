@@ -2,8 +2,19 @@
 
 <h1 align="center">ForgeFort</h1>
 <p align="center"><code>WORKFLOW AUTOMATION ENGINE</code></p>
+<p align="center"><a href="https://forgefort.vercel.app"><b>Live demo: forgefort.vercel.app</b></a></p>
 
 A visual workflow builder (React Flow) with a custom Node.js execution engine. Users connect nodes on a canvas, run workflows on the backend, and inspect persisted results.
+
+![The editor after a run of the trip-weather showcase: executed path in green, the unused branches dimmed, and the execution log with each node's timing and skip reason](docs/screenshots/editor-run.png)
+
+> The demo backend runs on Render's free plan and sleeps after 15 minutes without visitors, so the first request can take about a minute.
+
+<details>
+<summary>Sign-in page</summary>
+
+![Sign-in page: a replayed run of the showcase workflow next to the form](docs/screenshots/sign-in.png)
+</details>
 
 > Status: v1 complete. All six phases are done: auth, editor, engine, HTTP/AI nodes, runs from the app with live updates and history, and security hardening with an encrypted secrets vault and deployment notes. See `docs/SPEC.md` for scope, `docs/ARCHITECTURE.md` for how execution works and `docs/walkthroughs/` for a guided tour of each phase.
 
