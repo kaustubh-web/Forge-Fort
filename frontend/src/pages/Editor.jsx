@@ -16,6 +16,7 @@ import ConfigPanel from "@/components/editor/ConfigPanel";
 import ValidationPanel from "@/components/editor/ValidationPanel";
 import { cn } from "@/lib/utils";
 import { useExecution } from "@/hooks/useExecution";
+import { listExecutions } from "@/lib/executionApi";
 import { nodeStatuses, executedEdgeIds } from "@/lib/executionState";
 import RunDialog from "@/components/editor/RunDialog";
 import ExecutionLogPanel from "@/components/editor/ExecutionLogPanel";
@@ -168,19 +169,31 @@ function EditorInner({ workflow }) {
       toast.error(getApiError(err).message); // e.g. 409 "Execution is already completed"
     }
   }
-
-  // Show a past run: the same path as a refresh with ?run= in the URL.
-  function openRun(executionId) {
-    setSearchParams({ run: executionId }, { replace: true });
+  function openRun(executionId){
+    setSearchParams({run: executionId},{replace:true});
     load(executionId);
     setHistoryOpen(false);
   }
 
   // After a refresh (or opening a shared link), pick up the run named in the URL.
-  // Runs once on mount: later ?run= changes come from runWorkflow, which already connected.
+  // Without ?run= (opened from the dashboard), attach to a run of this workflow that is still
+  // going, so the canvas shows it and Stop works. Runs once on mount: later ?run= changes come
+  // from runWorkflow and openRun, which already connected.
   useEffect(() => {
     const runId = searchParams.get("run");
-    if (runId) load(runId);
+    if(runId){
+      load(runId);
+      return;
+    }
+    listExecutions(workflow._id)
+       .then((runs)=>{
+        const live = runs.find((run)=>run.status === "running"); // newest first
+        if(live){
+          setSearchParams({ run: live._id},{replace: true});
+          load(live._id);
+        }
+       })
+       .catch(()=>{}); // a convenience only: the editor works without it
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -293,15 +306,15 @@ function EditorInner({ workflow }) {
       {runOpen && (
         <RunDialog initialInput={execution?.input} onRun={runWorkflow} onClose={() => setRunOpen(false)} />
       )}
-
-      {historyOpen && (
-        <RunHistoryDialog
+      
+      {historyOpen &&(
+        <RunHistoryDialog 
           workflowId={workflow._id}
           currentId={execution?.executionId}
           running={running}
           onOpenRun={openRun}
           onRerun={runWorkflow}
-          onClose={() => setHistoryOpen(false)}
+          onClose={()=> setHistoryOpen(false)}
         />
       )}
     </div>
