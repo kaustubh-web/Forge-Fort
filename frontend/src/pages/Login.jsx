@@ -3,7 +3,8 @@ import { Link, Navigate } from "react-router-dom";
 import { toast } from "sonner";
 import {useAuth} from "@/context/AuthContext";
 import { getApiError } from "@/lib/api";
-import AuthCard from "@/components/AuthCard";
+import AuthLayout from "@/components/auth/AuthLayout";
+import PasswordInput from "@/components/auth/PasswordInput";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -36,7 +37,7 @@ export default function Login(){
         }
     }
     return (
-    <AuthCard
+    <AuthLayout
         title="Sign in"
         subtitle="Welcome back to ForgeFort."
         footer={
@@ -63,9 +64,9 @@ export default function Login(){
             </div>
             <div className="space-y-1.5">
                 <Label htmlFor="password">Password</Label>
-                <Input
+                <PasswordInput
                 id="password"
-                type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e)=> setPassword(e.target.value)}
                 required
@@ -78,6 +79,6 @@ export default function Login(){
                 {submitting ? "Signing in..." : "Sign in"}
             </Button>
         </form>
-    </AuthCard>
+    </AuthLayout>
     );
 }
