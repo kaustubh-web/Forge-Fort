@@ -10,8 +10,12 @@ const BCRYPT_ROUNDS = 12;
 const DUMMY_HASH= bcrypt.hashSync("not-a-real-password",BCRYPT_ROUNDS);
 
 
+// HS256 is named on both sides (here and in middleware/auth.js). The verifier then accepts only
+// that algorithm, so a token claiming "none" or another algorithm is rejected outright.
+export const JWT_ALGORITHM = "HS256";
+
 export function signToken(user){
-    return jwt.sign({ sub: user.id}, env.JWT_SECRET, {expiresIn: env.JWT_EXPIRES_IN});
+    return jwt.sign({ sub: user.id}, env.JWT_SECRET, {algorithm: JWT_ALGORITHM, expiresIn: env.JWT_EXPIRES_IN});
 }
 
 export async function register({ email, password }){

@@ -121,3 +121,39 @@ describe("GET /api/auth/me", () => {
     expect(res.body.data.user.passwordHash).toBeUndefined();
   });
 });
+
+describe("token hardening", () => {
+  const SECRET = "test-secret-test-secret-test-secret-123456"; // the JWT_SECRET from tests/setup.js
+  const me = (token) => request(app).get("/api/auth/me").set("Authorization", `Bearer ${token}`);
+
+  it("issues HS256 tokens", async () => {
+    const { token } = await registerUser();
+    expect(jwt.decode(token, { complete: true }).header.alg).toBe("HS256");
+  });
+
+  it("rejects a token signed with another algorithm, even with the right secret", async () => {
+    const { user } = await registerUser();
+    const hs512 = jwt.sign({ sub: user._id }, SECRET, { algorithm: "HS512" });
+    expect((await me(hs512)).status).toBe(401);
+  });
+
+  it('rejects an unsigned "alg: none" token', async () => {
+    const { user } = await registerUser();
+    const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const unsigned = `${b64({ alg: "none", typ: "JWT" })}.${b64({ sub: user._id })}.`;
+    expect((await me(unsigned)).status).toBe(401);
+  });
+
+  it("answers 401, not 500, for a correctly signed token with a malformed user id", async () => {
+    const odd = jwt.sign({ sub: "not-an-object-id" }, SECRET, { algorithm: "HS256" });
+    const res = await me(odd);
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("rejects an expired token", async () => {
+    const { user } = await registerUser();
+    const expired = jwt.sign({ sub: user._id, exp: Math.floor(Date.now() / 1000) - 10 }, SECRET, { algorithm: "HS256" });
+    expect((await me(expired)).status).toBe(401);
+  });
+});
