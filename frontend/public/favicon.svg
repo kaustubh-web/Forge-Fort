@@ -1,4 +1,4 @@
-<!-- Forge-fort mark: a fort with a branching workflow graph (trigger, condition, two branches)
+<!-- ForgeFort mark: a fort with a branching workflow graph (trigger, condition, two branches)
      cut out of it. Redrawn as vector from docs/Logo.png. The graph is a mask, so it shows the
      background behind the logo, like the brand sheet. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">

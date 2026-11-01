@@ -1,4 +1,4 @@
-# Forge-fort: Agentic Workflow Automation Platform
+# ForgeFort: Agentic Workflow Automation Platform
 
 A visual workflow builder (React Flow) with a custom Node.js execution engine. Users connect nodes on a canvas, run workflows on the backend, and inspect persisted results.
 

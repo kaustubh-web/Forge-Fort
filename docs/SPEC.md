@@ -1,4 +1,4 @@
-# Forge-fort v1 Specification
+# ForgeFort v1 Specification
 
 ## 1. Product
 Users build automation workflows by dragging nodes onto a canvas and connecting them. They configure nodes, save to MongoDB, run workflows on the backend, watch live progress, and inspect each node's input, output, status, and errors. Execution history is persisted and workflows can be re-run.

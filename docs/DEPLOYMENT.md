@@ -1,4 +1,4 @@
-# Deploying Forge-fort
+# Deploying ForgeFort
 
 ```
 Browser ── HTTPS ──> Vercel (static frontend: frontend/dist)

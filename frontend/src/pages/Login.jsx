@@ -38,7 +38,7 @@ export default function Login(){
     return (
     <AuthCard
         title="Sign in"
-        subtitle="Welcome back to Forge-fort."
+        subtitle="Welcome back to ForgeFort."
         footer={
             <>
              No account?{" "}

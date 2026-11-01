@@ -1,6 +1,6 @@
-<p align="center"><img src="docs/logo-mark.svg" width="72" alt="Forge-fort logo: a fort with a branching workflow graph"></p>
+<p align="center"><img src="docs/logo-mark.svg" width="72" alt="ForgeFort logo: a fort with a branching workflow graph"></p>
 
-<h1 align="center">Forge-fort</h1>
+<h1 align="center">ForgeFort</h1>
 <p align="center"><code>WORKFLOW AUTOMATION ENGINE</code></p>
 
 A visual workflow builder (React Flow) with a custom Node.js execution engine. Users connect nodes on a canvas, run workflows on the backend, and inspect persisted results.

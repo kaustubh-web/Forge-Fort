@@ -1,6 +1,6 @@
 import { useId } from "react";
 
-// The Forge-fort mark (same drawing as docs/logo-mark.svg and public/favicon.svg): a fort with a
+// The ForgeFort mark (same drawing as docs/logo-mark.svg and public/favicon.svg): a fort with a
 // branching workflow graph cut out of it. Coloured with currentColor, so a text-* class sets it.
 // useId gives each instance its own mask id: two SVGs sharing one id on a page would clash.
 export default function Logo({ className }) {

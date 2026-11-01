@@ -46,7 +46,7 @@ export default function AppShell() {
           {open && (
             <span className="flex min-w-0 items-center gap-2 font-medium">
               <Logo className="size-5 shrink-0 text-primary" />
-              <span className="truncate">Forge-fort</span>
+              <span className="truncate">ForgeFort</span>
             </span>
           )}
         </div>
