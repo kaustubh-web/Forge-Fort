@@ -63,5 +63,7 @@ const workflowExecutionSchema = new mongoose.Schema(
 workflowExecutionSchema.index({ workflow: 1, startedAt: -1 });
 // Boot recovery looks up every execution still "running".
 workflowExecutionSchema.index({ status: 1 });
+// Executions page: a user's newest runs across all workflows (GET /api/executions).
+workflowExecutionSchema.index({ owner: 1, startedAt: -1 });
 
 export const WorkflowExecution = mongoose.model("WorkflowExecution", workflowExecutionSchema);

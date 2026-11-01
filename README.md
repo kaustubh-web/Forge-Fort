@@ -123,6 +123,7 @@ All routes need a Bearer token; another user's execution or workflow returns 404
 |---|---|---|
 | POST | `/api/workflows/:id/execute` | Body `{ input }` (a JSON object, max 100 KB, optional). Runs the **saved** workflow. 202 `{ executionId, status: "running" }`; the engine runs in the background. 400 `INVALID_WORKFLOW` (with every problem in `details`) if the graph cannot run; nothing is created then. |
 | GET | `/api/workflows/:id/executions` | The last 50 runs, newest first (summaries: status, input, error, timings). |
+| GET | `/api/executions` | The newest runs across **all** your workflows (summaries with `metadata.workflowName`). Query: `status` (`running`, `completed`, `failed`, `cancelled`), `limit` (1-100, default 50). |
 | GET | `/api/executions/:id` | The full persisted execution: one record per node in run order (status, input, output, attempts, attemptLog, error, skipReason, branch, timings), plus `outputs` and `logs`. |
 | GET | `/api/executions/:id/stream` | Server-Sent Events, see below. |
 | POST | `/api/executions/:id/cancel` | 202: the engine was asked to stop; the stream reports `workflow.cancelled`. 409 `NOT_RUNNING` if it already finished. |

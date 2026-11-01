@@ -7,6 +7,7 @@ const router = Router();
 
 router.use(requireAuth);
 
+router.get("/", executionController.list); // newest runs across all workflows (?status=&limit=)
 router.get("/:id",executionController.get);
 router.post("/:id/cancel",executionController.cancel);
 // Server-Sent Events: snapshot first, then live engine events (controllers/streamController.js).

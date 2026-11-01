@@ -320,3 +320,60 @@ describe("concurrent run cap (MAX_CONCURRENT_RUNS = 3 by default)", () => {
         await waitFor(other, theirs.body.data.executionId);
     });
 });
+
+describe("GET /api/executions (all workflows)", () => {
+    const list = (auth, query = "") => request(app).get(`/api/executions${query}`).set("Authorization", auth);
+
+    it("lists the user's runs across workflows, newest first, as summaries with the workflow name", async () => {
+        const auth = await newUser();
+        const first = await createWorkflow(auth);
+        const second = await createWorkflow(auth, { ...branching, name: "Second one" });
+        const ids = [];
+        for (const [wf, n] of [[first, 1], [second, 9], [first, 7]]) {
+            const id = (await execute(auth, wf, { input: { n } })).body.data.executionId;
+            await waitFor(auth, id);
+            ids.push(id);
+        }
+
+        const res = await list(auth);
+        expect(res.status).toBe(200);
+        const runs = res.body.data.executions;
+        expect(runs.map((r) => r._id)).toEqual([...ids].reverse());
+        expect(runs.map((r) => r.metadata.workflowName)).toEqual(["Branching", "Second one", "Branching"]);
+        expect(runs[0]).toMatchObject({ workflow: first, status: "completed" });
+        expect(runs[0].nodes).toBeUndefined(); // summaries only
+        expect(runs[0].input).toBeUndefined();
+    });
+
+    it("filters by status and honours limit", async () => {
+        const auth = await newUser();
+        const wf = await createWorkflow(auth);
+        await waitFor(auth, (await execute(auth, wf, { input: { n: 1 } })).body.data.executionId);
+        // No input at all: the Condition has nothing to compare, so this run fails.
+        await waitFor(auth, (await execute(auth, wf, {})).body.data.executionId);
+        await waitFor(auth, (await execute(auth, wf, { input: { n: 2 } })).body.data.executionId);
+
+        const failed = (await list(auth, "?status=failed")).body.data.executions;
+        expect(failed.map((r) => r.status)).toEqual(["failed"]);
+        const completed = (await list(auth, "?status=completed&limit=1")).body.data.executions;
+        expect(completed).toHaveLength(1);
+        expect(completed[0].status).toBe("completed");
+    });
+
+    it("rejects bad query values with 400", async () => {
+        const auth = await newUser();
+        for (const q of ["?status=exploded", "?limit=0", "?limit=101", "?limit=ten"]) {
+            const res = await list(auth, q);
+            expect(res.status, q).toBe(400);
+            expect(res.body.error.code).toBe("VALIDATION_ERROR");
+        }
+    });
+
+    it("never shows another user's runs, and needs a token", async () => {
+        const alice = await newUser();
+        await waitFor(alice, (await execute(alice, await createWorkflow(alice), { input: { n: 1 } })).body.data.executionId);
+        const bob = await newUser();
+        expect((await list(bob)).body.data.executions).toEqual([]);
+        expect((await request(app).get("/api/executions")).status).toBe(401);
+    });
+});

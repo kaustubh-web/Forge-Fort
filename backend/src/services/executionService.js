@@ -74,6 +74,19 @@ export function getExecution(ownerId, id){
 // GET /api/workflows/:id/executions: summaries for the history list, newest first.
 // input is included so the UI can "rerun with the same input".
 
+// GET /api/executions: the newest runs across ALL of the user's workflows (the Executions page).
+// Summaries only (no node records), like the per-workflow list. Uses the { owner, startedAt } index.
+// The workflow's name comes from metadata.workflowName, saved at run time, so a run of a since
+// deleted or renamed workflow still shows the name it ran under.
+export function listExecutions(ownerId, { status, limit }){
+    const filter = { owner: ownerId };
+    if (status) filter.status = status;
+    return WorkflowExecution.find(filter)
+        .select("workflow status error startedAt endedAt durationMs metadata")
+        .sort({ startedAt: -1 })
+        .limit(limit);
+}
+
 export async function listForWorkflow(ownerId, workflowId){
     const workflow = await getWorkflow(ownerId,workflowId);
     return WorkflowExecution.find({workflow: workflow._id, owner: ownerId})
